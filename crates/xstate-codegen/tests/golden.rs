@@ -84,6 +84,18 @@ fn golden_simple_toggle() {
         n.contains("impl :: xstate_core :: Machine"),
         "missing Machine impl"
     );
+    assert!(
+        n.contains("type EventPayload = EventPayload"),
+        "missing EventPayload associated type"
+    );
+    assert!(
+        n.contains("_payload : & Self :: EventPayload"),
+        "missing _payload parameter in transition"
+    );
+    assert!(
+        n.contains("pub type EventPayload = :: serde_json :: Value"),
+        "missing EventPayload type alias"
+    );
 }
 
 #[test]
@@ -173,6 +185,18 @@ fn golden_traffic_light() {
     assert!(n.contains("=> State :: Green"), "missing red target");
     assert!(n.contains("fn initial_state"));
     assert!(n.contains("State :: Green"), "missing initial state Green");
+    assert!(
+        n.contains("type EventPayload = EventPayload"),
+        "missing EventPayload associated type"
+    );
+    assert!(
+        n.contains("_payload : & Self :: EventPayload"),
+        "missing _payload parameter in transition"
+    );
+    assert!(
+        n.contains("pub type EventPayload = :: serde_json :: Value"),
+        "missing EventPayload type alias"
+    );
 }
 
 #[test]
@@ -222,6 +246,14 @@ fn golden_with_context() {
         "missing Deserialize derive on Context"
     );
     assert!(n.contains("Clone"), "missing Clone derive on Context");
+    assert!(
+        n.contains("type EventPayload = EventPayload"),
+        "missing EventPayload associated type"
+    );
+    assert!(
+        n.contains("_payload : & Self :: EventPayload"),
+        "missing _payload parameter in transition"
+    );
 }
 
 #[test]
@@ -278,6 +310,14 @@ fn golden_with_guards() {
     assert!(
         n.contains("=> State :: Submitted"),
         "missing transition target"
+    );
+    assert!(
+        n.contains("type EventPayload = EventPayload"),
+        "missing EventPayload associated type"
+    );
+    assert!(
+        n.contains("_payload : & Self :: EventPayload"),
+        "missing _payload parameter in transition"
     );
 }
 
@@ -337,4 +377,12 @@ fn golden_with_entry_exit_actions() {
     );
     assert!(n.contains("fn initial_state"), "missing initial_state fn");
     assert!(n.contains("State :: Idle"), "missing initial state");
+    assert!(
+        n.contains("type EventPayload = EventPayload"),
+        "missing EventPayload associated type"
+    );
+    assert!(
+        n.contains("_payload : & Self :: EventPayload"),
+        "missing _payload parameter in transition"
+    );
 }

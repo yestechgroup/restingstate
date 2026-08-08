@@ -1,0 +1,54 @@
+{
+  "machine_name": "persistenceToggle",
+  "machine_ir": {
+    "id": "persistenceToggle",
+    "initial": "inactive",
+    "context": { "fields": [{ "name": "count", "type_name": "number", "default_value": 0 }] },
+    "states": [
+      {
+        "name": "inactive",
+        "type": "atomic",
+        "transitions": [{ "event": "TOGGLE", "target": "active" }]
+      },
+      {
+        "name": "active",
+        "type": "atomic",
+        "transitions": [{ "event": "TOGGLE", "target": "inactive" }]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "persistenceToggle",
+    "initial": "inactive",
+    "context": { "count": 0 },
+    "states": {
+      "inactive": { "on": { "TOGGLE": "active" } },
+      "active": { "on": { "TOGGLE": "inactive" } }
+    }
+  },
+  "protocol": {
+    "initial": { "value": "inactive", "context": { "count": 0 } },
+    "events": [
+      { "type": "TOGGLE" },
+      { "type": "TOGGLE" },
+      { "type": "TOGGLE" }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": { "type": "TOGGLE" },
+      "snapshot": { "value": "active", "context": { "count": 0 } }
+    },
+    {
+      "step": 1,
+      "event": { "type": "TOGGLE" },
+      "snapshot": { "value": "inactive", "context": { "count": 0 } }
+    },
+    {
+      "step": 2,
+      "event": { "type": "TOGGLE" },
+      "snapshot": { "value": "active", "context": { "count": 0 } }
+    }
+  ]
+}

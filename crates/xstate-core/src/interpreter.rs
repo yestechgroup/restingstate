@@ -1,14 +1,46 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use xstate_ir::{Machine, StateNode, StateType};
 
 use crate::state_value::StateValue;
 
 pub struct Interpreter {
     machine: Machine,
+    history: RefCell<HashMap<String, StateValue>>,
 }
 
 impl Interpreter {
     pub fn new(machine: Machine) -> Self {
-        Interpreter { machine }
+        let interpreter = Interpreter {
+            machine,
+            history: RefCell::new(HashMap::new()),
+        };
+        interpreter.record_initial_history();
+        interpreter
+    }
+
+    fn record_initial_history(&self) {
+        let initial_name = self.machine.initial.clone();
+        if let Some(node) = self.find_root_state(&initial_name) {
+            self.record_entry_history(node);
+        }
+    }
+
+    fn record_entry_history(&self, node: &StateNode) {
+        let has_history = node
+            .children
+            .iter()
+            .any(|c| c.node_type == StateType::History || c.node_type == StateType::DeepHistory);
+        if !has_history {
+            return;
+        }
+        if let Some(initial_name) = &node.initial {
+            if let Some(child) = node.children.iter().find(|c| &c.name == initial_name) {
+                let value = self.resolve_initial_value(child);
+                self.history.borrow_mut().insert(node.name.clone(), value);
+                self.record_entry_history(child);
+            }
+        }
     }
 
     pub fn initial_state(&self) -> StateValue {
@@ -36,17 +68,65 @@ impl Interpreter {
         serde_json::Value::Object(map)
     }
 
+    pub fn restore(
+        &self,
+        state_value: &StateValue,
+        context: serde_json::Value,
+    ) -> (StateValue, serde_json::Value) {
+        self.validate_state_value(state_value, &self.machine.states);
+        (state_value.clone(), context)
+    }
+
+    pub fn snapshot(
+        &self,
+        state_value: &StateValue,
+        context: &serde_json::Value,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "value": serde_json::to_value(state_value).unwrap(),
+            "context": context,
+        })
+    }
+
+    fn validate_state_value(&self, value: &StateValue, scope: &[StateNode]) {
+        match value {
+            StateValue::Atomic(name) => {
+                if !scope.iter().any(|s| s.name == *name) {
+                    panic!("State '{}' not found in machine", name);
+                }
+            }
+            StateValue::Compound { state, child } => {
+                let node = scope
+                    .iter()
+                    .find(|s| s.name == *state)
+                    .unwrap_or_else(|| panic!("State '{}' not found in machine", state));
+                self.validate_state_value(child, &node.children);
+            }
+            StateValue::Parallel { regions } => {
+                for (region_name, region_value) in regions {
+                    let node = scope
+                        .iter()
+                        .find(|s| s.name == *region_name)
+                        .unwrap_or_else(|| panic!("Region '{}' not found in machine", region_name));
+                    self.validate_state_value(region_value, &node.children);
+                }
+            }
+        }
+    }
+
     pub fn send(
         &self,
         state: &StateValue,
-        event: &str,
+        event: &serde_json::Value,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value) -> bool,
-        actions: &mut dyn FnMut(&str, &[serde_json::Value]),
+        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
     ) -> Option<StateValue> {
-        match state {
+        let event_type = event["type"].as_str().unwrap_or("");
+        let mut current = state.clone();
+        let result = match &current {
             StateValue::Parallel { regions } => {
-                self.send_parallel(regions, event, context, guards, actions)
+                self.send_parallel(regions, event_type, event, context, guards, actions)
             }
             StateValue::Compound { state: name, child } if self.contains_parallel(child) => {
                 let new_child = self.send(child, event, context, guards, actions)?;
@@ -56,10 +136,38 @@ impl Interpreter {
                 })
             }
             _ => {
-                let path = self.find_full_path(state);
-                self.send_along_path(&path, state, event, context, guards, actions)
+                let path = self.find_full_path(&current);
+                self.send_along_path(&path, &current, event_type, event, context, guards, actions)
             }
+        };
+
+        if let Some(ref next_state) = result {
+            current = next_state.clone();
+            for _ in 0..10 {
+                match self.resolve_always(&current, context, guards, actions) {
+                    Some(always_state) => current = always_state,
+                    None => break,
+                }
+            }
+            Some(current)
+        } else {
+            result
         }
+    }
+
+    fn resolve_always(
+        &self,
+        state: &StateValue,
+        context: &mut serde_json::Value,
+        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+    ) -> Option<StateValue> {
+        let path = self.find_full_path(state);
+        if path.is_empty() {
+            return None;
+        }
+        let empty_event = serde_json::json!({"type": ""});
+        self.send_along_path(&path, state, "", &empty_event, context, guards, actions)
     }
 
     fn contains_parallel(&self, state: &StateValue) -> bool {
@@ -74,9 +182,10 @@ impl Interpreter {
         &self,
         regions: &[(String, StateValue)],
         event: &str,
+        event_payload: &serde_json::Value,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value) -> bool,
-        actions: &mut dyn FnMut(&str, &[serde_json::Value]),
+        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
     ) -> Option<StateValue> {
         let region_name = &regions.first()?.0;
         let region_path = Self::find_node_path_in(&self.machine.states, region_name)?;
@@ -98,6 +207,7 @@ impl Interpreter {
                 region_scope,
                 transition_scope,
                 event,
+                event_payload,
                 context,
                 guards,
                 actions,
@@ -128,9 +238,10 @@ impl Interpreter {
         search_scope: &[StateNode],
         transition_scope: &[StateNode],
         event: &str,
+        event_payload: &serde_json::Value,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value) -> bool,
-        actions: &mut dyn FnMut(&str, &[serde_json::Value]),
+        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
     ) -> Option<StateValue> {
         match state {
             StateValue::Atomic(name) => {
@@ -146,7 +257,7 @@ impl Interpreter {
                         continue;
                     }
                     if let Some(ref guard) = transition.guard {
-                        if !guards(&guard.name, context) {
+                        if !guards(&guard.name, context, event_payload) {
                             continue;
                         }
                     }
@@ -154,18 +265,18 @@ impl Interpreter {
                         let target = transition_scope.iter().find(|n| n.name == *target_name)?;
                         let target_value = self.resolve_region_value(target);
                         for action_name in &node.exit {
-                            actions(action_name, &[]);
+                            actions(action_name, &[], event_payload);
                         }
                         for action in &transition.actions {
-                            actions(&action.name, &action.args);
+                            actions(&action.name, &action.args, event_payload);
                         }
                         for action_name in &target.entry {
-                            actions(action_name, &[]);
+                            actions(action_name, &[], event_payload);
                         }
                         return Some(target_value);
                     } else {
                         for action in &transition.actions {
-                            actions(&action.name, &action.args);
+                            actions(&action.name, &action.args, event_payload);
                         }
                         return Some(state.clone());
                     }
@@ -222,14 +333,16 @@ impl Interpreter {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn send_along_path(
         &self,
         path: &[&StateNode],
         current_state: &StateValue,
         event: &str,
+        event_payload: &serde_json::Value,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value) -> bool,
-        actions: &mut dyn FnMut(&str, &[serde_json::Value]),
+        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
     ) -> Option<StateValue> {
         for node in path.iter().rev() {
             if node.node_type == StateType::Final {
@@ -240,7 +353,7 @@ impl Interpreter {
                     continue;
                 }
                 if let Some(ref guard) = transition.guard {
-                    if !guards(&guard.name, context) {
+                    if !guards(&guard.name, context, event_payload) {
                         continue;
                     }
                 }
@@ -254,26 +367,49 @@ impl Interpreter {
                         .take_while(|(s, t)| s.name == t.name)
                         .count();
 
+                    if common_prefix < path.len() {
+                        for i in common_prefix..path.len() {
+                            if i > 0 {
+                                self.record_history_for_node(path[i - 1], path);
+                            }
+                        }
+                    }
+
+                    for i in (0..common_prefix.min(path.len())).rev() {
+                        let parent = path[i];
+                        let child_in_path = path.get(i + 1);
+                        if let Some(child) = child_in_path {
+                            let has_history = parent.children.iter().any(|c| {
+                                c.node_type == StateType::History
+                                    || c.node_type == StateType::DeepHistory
+                            });
+                            if has_history {
+                                let value = self.resolve_initial_value(child);
+                                self.history.borrow_mut().insert(parent.name.clone(), value);
+                            }
+                        }
+                    }
+
                     for n in path[common_prefix..].iter().rev() {
                         for action_name in &n.exit {
-                            actions(action_name, &[]);
+                            actions(action_name, &[], event_payload);
                         }
                     }
 
                     for action in &transition.actions {
-                        actions(&action.name, &action.args);
+                        actions(&action.name, &action.args, event_payload);
                     }
 
                     for n in &target_path[common_prefix..] {
                         for action_name in &n.entry {
-                            actions(action_name, &[]);
+                            actions(action_name, &[], event_payload);
                         }
                     }
 
                     return Some(target_value);
                 } else {
                     for action in &transition.actions {
-                        actions(&action.name, &action.args);
+                        actions(&action.name, &action.args, event_payload);
                     }
                     return Some(current_state.clone());
                 }
@@ -285,6 +421,31 @@ impl Interpreter {
 
     fn build_target(&self, target_name: &str) -> Option<(Vec<&StateNode>, StateValue)> {
         let (path_to_named, leaf) = Self::find_node_by_name_in(&self.machine.states, target_name)?;
+
+        if leaf.node_type == StateType::History || leaf.node_type == StateType::DeepHistory {
+            if let Some(parent) = path_to_named.last().and_then(|_| {
+                if path_to_named.len() >= 2 {
+                    Some(path_to_named[path_to_named.len() - 2])
+                } else {
+                    None
+                }
+            }) {
+                if let Some(recorded) = self.history.borrow().get(&parent.name) {
+                    let mut value = recorded.clone();
+                    let mut full_path = Vec::with_capacity(path_to_named.len());
+                    for ancestor in &path_to_named[..path_to_named.len() - 1] {
+                        full_path.push(*ancestor);
+                    }
+                    for ancestor in path_to_named[..path_to_named.len() - 1].iter().rev() {
+                        value = StateValue::Compound {
+                            state: ancestor.name.clone(),
+                            child: Box::new(value),
+                        };
+                    }
+                    return Some((full_path, value));
+                }
+            }
+        }
 
         let value = self.state_value_from_path(&path_to_named);
 
@@ -320,7 +481,11 @@ impl Interpreter {
     fn resolve_initial_value(&self, node: &StateNode) -> StateValue {
         match node.node_type {
             StateType::Compound => {
-                if let Some(initial_name) = &node.initial {
+                let has_history_child = node.children.iter().any(|c| {
+                    c.node_type == StateType::History || c.node_type == StateType::DeepHistory
+                });
+
+                let result = if let Some(initial_name) = &node.initial {
                     let child = node
                         .children
                         .iter()
@@ -337,7 +502,17 @@ impl Interpreter {
                     }
                 } else {
                     StateValue::Atomic(node.name.clone())
+                };
+
+                if has_history_child {
+                    if let StateValue::Compound { child, .. } = &result {
+                        self.history
+                            .borrow_mut()
+                            .insert(node.name.clone(), *child.clone());
+                    }
                 }
+
+                result
             }
             StateType::Parallel => {
                 let regions: Vec<_> = node
@@ -350,6 +525,12 @@ impl Interpreter {
                     child: Box::new(StateValue::Parallel { regions }),
                 }
             }
+            StateType::History | StateType::DeepHistory => self
+                .history
+                .borrow()
+                .get(&node.name)
+                .cloned()
+                .unwrap_or(StateValue::Atomic(node.name.clone())),
             _ => StateValue::Atomic(node.name.clone()),
         }
     }
@@ -368,6 +549,54 @@ impl Interpreter {
                 }
             }
             _ => self.resolve_initial_value(node),
+        }
+    }
+
+    fn record_history_for_node(&self, node: &StateNode, full_path: &[&StateNode]) {
+        let has_history = node
+            .children
+            .iter()
+            .any(|c| c.node_type == StateType::History || c.node_type == StateType::DeepHistory);
+        if !has_history {
+            return;
+        }
+
+        let node_idx = full_path.iter().position(|n| n.name == node.name);
+        let Some(idx) = node_idx else { return };
+
+        if let Some(child) = full_path.get(idx + 1) {
+            let has_deep = node
+                .children
+                .iter()
+                .any(|c| c.node_type == StateType::DeepHistory);
+            if has_deep {
+                let value = self.compute_history_value(node, full_path, idx);
+                self.history.borrow_mut().insert(node.name.clone(), value);
+            } else {
+                let value = self.resolve_initial_value(child);
+                self.history.borrow_mut().insert(node.name.clone(), value);
+            }
+        }
+    }
+
+    fn compute_history_value(
+        &self,
+        node: &StateNode,
+        path: &[&StateNode],
+        node_idx: usize,
+    ) -> StateValue {
+        if let Some(child) = path.get(node_idx + 1) {
+            let child_value = self.compute_history_value(child, path, node_idx + 1);
+            if child.name != node.name {
+                StateValue::Compound {
+                    state: child.name.clone(),
+                    child: Box::new(child_value),
+                }
+            } else {
+                child_value
+            }
+        } else {
+            StateValue::Atomic(node.name.clone())
         }
     }
 
@@ -503,13 +732,19 @@ mod tests {
         let mut context = interpreter.initial_context();
         let mut actions_log: Vec<String> = Vec::new();
 
-        let mut actions = |name: &str, _args: &[serde_json::Value]| {
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
             actions_log.push(name.to_string());
         };
-        let guards = |_name: &str, _ctx: &serde_json::Value| true;
+        let guards = |_name: &str, _ctx: &serde_json::Value, _: &serde_json::Value| true;
 
         let new_state = interpreter
-            .send(&state, "toggle", &mut context, &guards, &mut actions)
+            .send(
+                &state,
+                &serde_json::json!({"type": "toggle"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
             .unwrap();
         assert_eq!(new_state, StateValue::Atomic("active".into()));
         assert!(actions_log.contains(&"increment".to_string()));
@@ -521,10 +756,16 @@ mod tests {
         let state = StateValue::Atomic("inactive".into());
         let mut context = interpreter.initial_context();
 
-        let mut actions = |_: &str, _: &[serde_json::Value]| {};
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
-        let result = interpreter.send(&state, "unknown", &mut context, &guards, &mut actions);
+        let result = interpreter.send(
+            &state,
+            &serde_json::json!({"type": "unknown"}),
+            &mut context,
+            &guards,
+            &mut actions,
+        );
         assert!(result.is_none());
     }
 
@@ -534,10 +775,16 @@ mod tests {
         let state = StateValue::Atomic("idle".into());
         let mut context = interpreter.initial_context();
 
-        let mut actions = |_: &str, _: &[serde_json::Value]| {};
-        let guards = |_: &str, _: &serde_json::Value| false;
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| false;
 
-        let result = interpreter.send(&state, "PAY", &mut context, &guards, &mut actions);
+        let result = interpreter.send(
+            &state,
+            &serde_json::json!({"type": "PAY"}),
+            &mut context,
+            &guards,
+            &mut actions,
+        );
         assert!(result.is_none());
     }
 
@@ -647,13 +894,19 @@ mod tests {
         let mut context = interpreter.initial_context();
         let mut actions_log: Vec<String> = Vec::new();
 
-        let mut actions = |name: &str, _args: &[serde_json::Value]| {
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
             actions_log.push(name.to_string());
         };
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
         let new_state = interpreter
-            .send(&state, "PAY", &mut context, &guards, &mut actions)
+            .send(
+                &state,
+                &serde_json::json!({"type": "PAY"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
             .unwrap();
 
         assert_eq!(
@@ -680,15 +933,15 @@ mod tests {
         let mut context = interpreter.initial_context();
         let mut actions_log: Vec<String> = Vec::new();
 
-        let mut actions = |name: &str, _args: &[serde_json::Value]| {
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
             actions_log.push(name.to_string());
         };
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
         let new_state = interpreter
             .send(
                 &processing_auth,
-                "AUTH_OK",
+                &serde_json::json!({"type": "AUTH_OK"}),
                 &mut context,
                 &guards,
                 &mut actions,
@@ -720,15 +973,15 @@ mod tests {
         let mut context = interpreter.initial_context();
         let mut actions_log: Vec<String> = Vec::new();
 
-        let mut actions = |name: &str, _args: &[serde_json::Value]| {
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
             actions_log.push(name.to_string());
         };
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
         let new_state = interpreter
             .send(
                 &processing_capture,
-                "CAPTURE_OK",
+                &serde_json::json!({"type": "CAPTURE_OK"}),
                 &mut context,
                 &guards,
                 &mut actions,
@@ -746,12 +999,12 @@ mod tests {
         let done_state = StateValue::Atomic("done".into());
         let mut context = interpreter.initial_context();
 
-        let mut actions = |_: &str, _: &[serde_json::Value]| {};
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
         let result = interpreter.send(
             &done_state,
-            "CAPTURE_OK",
+            &serde_json::json!({"type": "CAPTURE_OK"}),
             &mut context,
             &guards,
             &mut actions,
@@ -792,12 +1045,18 @@ mod tests {
         let mut context = interpreter.initial_context();
         let mut actions_log: Vec<String> = Vec::new();
 
-        let mut actions = |name: &str, _args: &[serde_json::Value]| {
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
             actions_log.push(name.to_string());
         };
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
-        let result = interpreter.send(&state, "LOG", &mut context, &guards, &mut actions);
+        let result = interpreter.send(
+            &state,
+            &serde_json::json!({"type": "LOG"}),
+            &mut context,
+            &guards,
+            &mut actions,
+        );
         assert_eq!(result, Some(StateValue::Atomic("idle".into())));
         assert!(actions_log.contains(&"logSomething".to_string()));
     }
@@ -822,11 +1081,17 @@ mod tests {
         let state = interpreter.initial_state();
         let mut context = interpreter.initial_context();
 
-        let mut actions = |_: &str, _: &[serde_json::Value]| {};
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
         let new_state = interpreter
-            .send(&state, "DONE", &mut context, &guards, &mut actions)
+            .send(
+                &state,
+                &serde_json::json!({"type": "DONE"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
             .unwrap();
 
         match &new_state {
@@ -1025,13 +1290,19 @@ mod tests {
         let mut context = interpreter.initial_context();
         let mut actions_log: Vec<(String, Vec<serde_json::Value>)> = Vec::new();
 
-        let mut actions = |name: &str, args: &[serde_json::Value]| {
+        let mut actions = |name: &str, args: &[serde_json::Value], _: &serde_json::Value| {
             actions_log.push((name.to_string(), args.to_vec()));
         };
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
         interpreter
-            .send(&state, "GO", &mut context, &guards, &mut actions)
+            .send(
+                &state,
+                &serde_json::json!({"type": "GO"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
             .unwrap();
 
         assert_eq!(actions_log.len(), 1);
@@ -1095,13 +1366,19 @@ mod tests {
         let mut context = interpreter.initial_context();
         let mut actions_log: Vec<String> = Vec::new();
 
-        let mut actions = |name: &str, _args: &[serde_json::Value]| {
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
             actions_log.push(name.to_string());
         };
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
         interpreter
-            .send(&state, "NEXT", &mut context, &guards, &mut actions)
+            .send(
+                &state,
+                &serde_json::json!({"type": "NEXT"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
             .unwrap();
 
         assert!(actions_log.contains(&"exit_inner".to_string()));
@@ -1152,13 +1429,19 @@ mod tests {
         let mut context = interpreter.initial_context();
         let mut actions_log: Vec<String> = Vec::new();
 
-        let mut actions = |name: &str, _args: &[serde_json::Value]| {
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
             actions_log.push(name.to_string());
         };
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
         interpreter
-            .send(&state, "NEXT", &mut context, &guards, &mut actions)
+            .send(
+                &state,
+                &serde_json::json!({"type": "NEXT"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
             .unwrap();
 
         assert!(actions_log.contains(&"exit_a".to_string()));
@@ -1217,13 +1500,19 @@ mod tests {
         let mut context = interpreter.initial_context();
         let mut actions_log: Vec<String> = Vec::new();
 
-        let mut actions = |name: &str, _args: &[serde_json::Value]| {
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
             actions_log.push(name.to_string());
         };
-        let guards = |_: &str, _: &serde_json::Value| true;
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
         interpreter
-            .send(&state, "NEXT", &mut context, &guards, &mut actions)
+            .send(
+                &state,
+                &serde_json::json!({"type": "NEXT"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
             .unwrap();
 
         let exit_idx = actions_log.iter().position(|a| a == "exit_a").unwrap();
@@ -1236,6 +1525,341 @@ mod tests {
             "exit_a must fire before trans_action, but exit_a at {} and trans_action at {}",
             exit_idx,
             trans_idx
+        );
+    }
+
+    #[test]
+    fn always_transition_fires_after_regular_transition() {
+        let machine = Machine {
+            id: "alwaysChain".into(),
+            initial: "start".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                IrStateNode {
+                    name: "start".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "START".into(),
+                        target: Some("auto".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                },
+                IrStateNode {
+                    name: "auto".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "".into(),
+                        target: Some("done".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                },
+                IrStateNode {
+                    name: "done".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                },
+            ],
+        };
+
+        let interpreter = Interpreter::new(machine);
+        let state = interpreter.initial_state();
+        let mut context = interpreter.initial_context();
+        assert_eq!(state, StateValue::Atomic("start".into()));
+
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+
+        let new_state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "START"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
+            .unwrap();
+        assert_eq!(new_state, StateValue::Atomic("done".into()));
+    }
+
+    #[test]
+    fn always_transition_with_guard() {
+        let machine = Machine {
+            id: "alwaysGuard".into(),
+            initial: "start".into(),
+            context: ContextSchema {
+                fields: vec![ContextField {
+                    name: "ready".into(),
+                    type_name: "boolean".into(),
+                    default_value: serde_json::json!(false),
+                }],
+            },
+            states: vec![
+                IrStateNode {
+                    name: "start".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "GO".into(),
+                        target: Some("check".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                },
+                IrStateNode {
+                    name: "check".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "".into(),
+                        target: Some("done".into()),
+                        guard: Some(Guard {
+                            name: "ready".into(),
+                        }),
+                        actions: vec![],
+                        description: None,
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                },
+                IrStateNode {
+                    name: "done".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                },
+            ],
+        };
+
+        let interpreter = Interpreter::new(machine);
+        let state = interpreter.initial_state();
+        let mut context = interpreter.initial_context();
+
+        assert_eq!(state, StateValue::Atomic("start".into()));
+
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |name: &str, ctx: &serde_json::Value, _: &serde_json::Value| {
+            name == "ready" && ctx.get("ready").and_then(|v| v.as_bool()).unwrap_or(false)
+        };
+
+        let new_state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "GO"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
+            .unwrap();
+
+        assert_eq!(new_state, StateValue::Atomic("check".into()));
+    }
+
+    #[test]
+    fn persistence_round_trip() {
+        let interpreter = Interpreter::new(toggle_machine());
+        let state = interpreter.initial_state();
+        let ctx = interpreter.initial_context();
+
+        let state_json = serde_json::to_value(&state).unwrap();
+        let snapshot_json = serde_json::json!({
+            "value": state_json,
+            "context": ctx
+        });
+
+        let restored_state: StateValue =
+            serde_json::from_value(snapshot_json["value"].clone()).unwrap();
+        let restored_ctx: serde_json::Value = snapshot_json["context"].clone();
+
+        let (r_state, r_ctx) = interpreter.restore(&restored_state, restored_ctx);
+        assert_eq!(r_state, StateValue::Atomic("inactive".into()));
+
+        let mut context = r_ctx;
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+
+        let new_state = interpreter
+            .send(
+                &r_state,
+                &serde_json::json!({"type": "toggle"}),
+                &mut context,
+                &guards,
+                &mut actions,
+            )
+            .unwrap();
+        assert_eq!(new_state, StateValue::Atomic("active".into()));
+    }
+
+    #[test]
+    fn shallow_history_remembers_last_child() {
+        let machine = Machine {
+            id: "history".into(),
+            initial: "main".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                IrStateNode {
+                    name: "main".into(),
+                    description: None,
+                    initial: Some("idle".into()),
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "SWITCH".into(),
+                        target: Some("other".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                    }],
+                    children: vec![
+                        IrStateNode {
+                            name: "idle".into(),
+                            node_type: StateType::Atomic,
+                            transitions: vec![Transition {
+                                event: "NEXT".into(),
+                                target: Some("active".into()),
+                                guard: None,
+                                actions: vec![],
+                                description: None,
+                            }],
+                            children: vec![],
+                            entry: vec![],
+                            exit: vec![],
+                            tags: vec![],
+                            description: None,
+                            initial: None,
+                        },
+                        IrStateNode {
+                            name: "active".into(),
+                            node_type: StateType::Atomic,
+                            transitions: vec![],
+                            children: vec![],
+                            entry: vec![],
+                            exit: vec![],
+                            tags: vec![],
+                            description: None,
+                            initial: None,
+                        },
+                        IrStateNode {
+                            name: "hist".into(),
+                            node_type: StateType::History,
+                            transitions: vec![],
+                            children: vec![],
+                            entry: vec![],
+                            exit: vec![],
+                            tags: vec![],
+                            description: None,
+                            initial: None,
+                        },
+                    ],
+                    node_type: StateType::Compound,
+                    tags: vec![],
+                },
+                IrStateNode {
+                    name: "other".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "BACK".into(),
+                        target: Some("hist".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                },
+            ],
+        };
+
+        let interpreter = Interpreter::new(machine);
+        let state = interpreter.initial_state();
+        assert_eq!(
+            state,
+            StateValue::Compound {
+                state: "main".into(),
+                child: Box::new(StateValue::Atomic("idle".into())),
+            }
+        );
+
+        let mut context = interpreter.initial_context();
+        // Transition inside main: idle → NEXT → active
+        let state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "NEXT"}),
+                &mut context,
+                &|_, _, _| true,
+                &mut |_, _, _| {},
+            )
+            .unwrap();
+
+        // Now leave main: main → SWITCH → other
+        let state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "SWITCH"}),
+                &mut context,
+                &|_, _, _| true,
+                &mut |_, _, _| {},
+            )
+            .unwrap();
+        assert_eq!(state, StateValue::Atomic("other".into()));
+
+        // Now go back: other → BACK → main
+        // History should restore to "active" (the last active child before leaving)
+        let state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "BACK"}),
+                &mut context,
+                &|_, _, _| true,
+                &mut |_, _, _| {},
+            )
+            .unwrap();
+        assert_eq!(
+            state,
+            StateValue::Compound {
+                state: "main".into(),
+                child: Box::new(StateValue::Atomic("active".into())),
+            }
         );
     }
 }

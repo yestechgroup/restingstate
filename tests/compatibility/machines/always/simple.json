@@ -1,0 +1,52 @@
+{
+  "machine_name": "alwaysSimple",
+  "machine_ir": {
+    "id": "alwaysSimple",
+    "initial": "init",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "init",
+        "type": "atomic",
+        "transitions": [
+          { "event": "START", "target": "auto" }
+        ]
+      },
+      {
+        "name": "auto",
+        "type": "atomic",
+        "transitions": [
+          { "event": "", "target": "done", "guard": null }
+        ]
+      },
+      {
+        "name": "done",
+        "type": "atomic",
+        "transitions": []
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "alwaysSimple",
+    "initial": "init",
+    "context": {},
+    "states": {
+      "init": { "on": { "START": "auto" } },
+      "auto": { "always": [{ "target": "done" }] },
+      "done": {}
+    }
+  },
+  "protocol": {
+    "initial": { "value": "init", "context": {} },
+    "events": [
+      { "type": "START" }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": { "type": "START" },
+      "snapshot": { "value": "done", "context": {} }
+    }
+  ]
+}

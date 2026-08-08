@@ -14,6 +14,14 @@ function collectGuardNames(config) {
         }
       }
     }
+    if (node.always) {
+      const items = Array.isArray(node.always) ? node.always : [node.always];
+      for (const t of items) {
+        if (typeof t === "object" && t !== null && typeof t.guard === "string") {
+          names.add(t.guard);
+        }
+      }
+    }
     if (node.states) {
       for (const child of Object.values(node.states)) {
         walk(child);
@@ -27,9 +35,15 @@ function collectGuardNames(config) {
 function buildGuardImplementations(guardNames) {
   const guards = {};
   for (const name of guardNames) {
-    guards[name] = ({ context }) => {
+    guards[name] = ({ context, event }) => {
       if (context !== null && typeof context === "object" && name in context) {
         return Boolean(context[name]);
+      }
+      if (event && typeof event === "object" && name in event) {
+        return Boolean(event[name]);
+      }
+      if (name === "isPositive" && event && typeof event === "object" && "value" in event) {
+        return event.value > 0;
       }
       return true;
     };
@@ -80,10 +94,9 @@ function irToXstateConfig(ir) {
 
     if (state.transitions && state.transitions.length > 0) {
       const on = {};
+      const alwaysTransitions = [];
       for (const t of state.transitions) {
-        if (!on[t.event]) {
-          on[t.event] = [];
-        }
+        const isAlways = t.event === "" || t.event === undefined;
         const entry = {};
         if (t.target) {
           entry.target = resolveTarget(t.target);
@@ -94,7 +107,14 @@ function irToXstateConfig(ir) {
         if (t.actions && t.actions.length > 0) {
           entry.actions = t.actions.map((a) => a.name);
         }
-        on[t.event].push(entry);
+        if (isAlways) {
+          alwaysTransitions.push(entry);
+        } else {
+          if (!on[t.event]) {
+            on[t.event] = [];
+          }
+          on[t.event].push(entry);
+        }
       }
       for (const [event, transitions] of Object.entries(on)) {
         if (transitions.length === 1) {
@@ -111,6 +131,9 @@ function irToXstateConfig(ir) {
         }
       }
       result.on = on;
+      if (alwaysTransitions.length > 0) {
+        result.always = alwaysTransitions;
+      }
     }
 
     if (state.children && state.children.length > 0) {

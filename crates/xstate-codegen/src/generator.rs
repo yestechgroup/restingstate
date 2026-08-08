@@ -8,12 +8,14 @@ use xstate_ir::state::StateNode;
 pub fn generate(machine: &Machine) -> Result<TokenStream, CodegenError> {
     let state_enum = generate_state_enum(machine);
     let event_enum = generate_event_enum(machine);
+    let event_payload = generate_event_payload_type();
     let context_struct = generate_context_struct(machine)?;
     let machine_impl = generate_machine_impl(machine)?;
 
     let tokens = quote! {
         #state_enum
         #event_enum
+        #event_payload
         #context_struct
         #machine_impl
     };
@@ -69,6 +71,12 @@ fn generate_event_enum(machine: &Machine) -> TokenStream {
         pub enum Event {
             #(#variants),*
         }
+    }
+}
+
+fn generate_event_payload_type() -> TokenStream {
+    quote! {
+        pub type EventPayload = ::serde_json::Value;
     }
 }
 
@@ -138,6 +146,7 @@ fn generate_machine_impl(machine: &Machine) -> Result<TokenStream, CodegenError>
         impl ::xstate_core::Machine for MachineImpl {
             type State = State;
             type Event = Event;
+            type EventPayload = EventPayload;
             type Context = Context;
 
             fn initial_state(&self) -> Self::State {
@@ -154,7 +163,8 @@ fn generate_machine_impl(machine: &Machine) -> Result<TokenStream, CodegenError>
                 &self,
                 state: &Self::State,
                 event: &Self::Event,
-                context: &mut Self::Context,
+                _payload: &Self::EventPayload,
+                _context: &mut Self::Context,
             ) -> Self::State {
                 match (state, event) {
                     #(#arms)*
@@ -323,6 +333,10 @@ mod tests {
         assert!(compact.contains("impl::xstate_core::MachineforMachineImpl"));
         assert!(compact.contains("(State::Inactive,Event::Toggle)=>State::Active"));
         assert!(compact.contains("(State::Active,Event::Toggle)=>State::Inactive"));
+        assert!(output.contains("type EventPayload = :: serde_json :: Value"));
+        let compact = output.replace(' ', "");
+        assert!(compact.contains("_payload:&Self::EventPayload"));
+        assert!(compact.contains("typeEventPayload=EventPayload"));
     }
 
     #[test]

@@ -32,6 +32,8 @@ struct InitialSnapshot {
 struct Event {
     #[serde(rename = "type")]
     event_type: String,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -109,21 +111,38 @@ fn main() {
     let mut outputs: Vec<RunnerOutput> = Vec::new();
 
     for (i, event) in test_vector.protocol.events.iter().enumerate() {
+        let mut event_value = serde_json::json!({"type": event.event_type});
+        if let Some(obj) = event_value.as_object_mut() {
+            for (k, v) in &event.extra {
+                if k != "type" {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+        }
         let new_state = interpreter.send(
             &state,
-            &event.event_type,
+            &event_value,
             &mut context,
-            &|guard_name: &str, ctx: &serde_json::Value| -> bool {
-                if let Some(val) = ctx.get(guard_name) {
-                    match val {
-                        serde_json::Value::Bool(b) => *b,
-                        _ => false,
-                    }
-                } else {
-                    true
+            &|guard_name: &str,
+              ctx: &serde_json::Value,
+              event_payload: &serde_json::Value|
+             -> bool {
+                if guard_name == "isPositive" {
+                    return event_payload
+                        .get("value")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0)
+                        > 0;
                 }
+                if let Some(val) = event_payload.get(guard_name) {
+                    return matches!(val, serde_json::Value::Bool(true));
+                }
+                if let Some(val) = ctx.get(guard_name) {
+                    return matches!(val, serde_json::Value::Bool(true));
+                }
+                true
             },
-            &mut |_, _| {},
+            &mut |_, _, _| {},
         );
 
         if let Some(s) = new_state {
@@ -132,7 +151,7 @@ fn main() {
 
         outputs.push(RunnerOutput {
             step: i,
-            event: serde_json::json!({ "type": event.event_type }),
+            event: event_value.clone(),
             snapshot: RunnerSnapshot {
                 value: serde_json::to_value(&state).expect("Failed to serialize state"),
                 context: context.clone(),

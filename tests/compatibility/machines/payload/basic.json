@@ -1,0 +1,163 @@
+{
+  "machine_name": "payloadGuard",
+  "machine_ir": {
+    "id": "payloadGuard",
+    "initial": "idle",
+    "context": {
+      "fields": [
+        {
+          "name": "lastValue",
+          "type_name": "number",
+          "default_value": 0
+        }
+      ]
+    },
+    "states": [
+      {
+        "name": "idle",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "UPDATE",
+            "target": "positive",
+            "guard": {
+              "name": "isPositive"
+            }
+          },
+          {
+            "event": "UPDATE",
+            "target": "negative"
+          }
+        ]
+      },
+      {
+        "name": "positive",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "UPDATE",
+            "target": "positive",
+            "guard": {
+              "name": "isPositive"
+            }
+          },
+          {
+            "event": "UPDATE",
+            "target": "negative"
+          }
+        ]
+      },
+      {
+        "name": "negative",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "UPDATE",
+            "target": "positive",
+            "guard": {
+              "name": "isPositive"
+            }
+          },
+          {
+            "event": "UPDATE",
+            "target": "negative"
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "payloadGuard",
+    "initial": "idle",
+    "context": {
+      "lastValue": 0
+    },
+    "states": {
+      "idle": {
+        "on": {
+          "UPDATE": [
+            {
+              "target": "positive",
+              "guard": "isPositive"
+            },
+            {
+              "target": "negative"
+            }
+          ]
+        }
+      },
+      "positive": {
+        "on": {
+          "UPDATE": [
+            {
+              "target": "positive",
+              "guard": "isPositive"
+            },
+            {
+              "target": "negative"
+            }
+          ]
+        }
+      },
+      "negative": {
+        "on": {
+          "UPDATE": [
+            {
+              "target": "positive",
+              "guard": "isPositive"
+            },
+            {
+              "target": "negative"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": "idle",
+      "context": {
+        "lastValue": 0
+      }
+    },
+    "events": [
+      {
+        "type": "UPDATE",
+        "value": 42
+      },
+      {
+        "type": "UPDATE",
+        "value": -5
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "UPDATE",
+        "value": 42
+      },
+      "snapshot": {
+        "value": "positive",
+        "context": {
+          "lastValue": 0
+        }
+      }
+    },
+    {
+      "step": 1,
+      "event": {
+        "type": "UPDATE",
+        "value": -5
+      },
+      "snapshot": {
+        "value": "negative",
+        "context": {
+          "lastValue": 0
+        }
+      }
+    }
+  ]
+}

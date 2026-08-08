@@ -567,6 +567,7 @@ name = "rust-token-bucket"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "xstate-core",
  "xstate-macro",
 ]
@@ -814,6 +815,7 @@ name = "xstate-macro-test"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "xstate-core",
  "xstate-macro",
 ]

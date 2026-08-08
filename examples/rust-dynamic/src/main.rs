@@ -58,11 +58,17 @@ fn main() {
     println!("Initial state: {:?}", state);
     println!("Initial context: {:?}", ctx);
 
-    let guards = |_: &str, _: &serde_json::Value| true;
-    let mut actions = |_: &str, _: &[serde_json::Value]| {};
+    let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+    let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
 
     let new_state = interpreter
-        .send(&state, "TOGGLE", &mut ctx, &guards, &mut actions)
+        .send(
+            &state,
+            &serde_json::json!({"type": "TOGGLE"}),
+            &mut ctx,
+            &guards,
+            &mut actions,
+        )
         .unwrap();
     println!("After TOGGLE: {:?}", new_state);
 

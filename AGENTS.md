@@ -134,18 +134,19 @@ The `xstate-parser` walks the OXC AST to extract `createMachine({...})` calls:
 | Parallel states | ✓ | 0.1 |
 | Final states | ✓ | 0.1 |
 | Transitions (event → target) | ✓ | 0.1 |
-| Event payload | ✗ | 0.1 |
+| Event payload | ✓ | 0.1 |
 | Guards (cond) | ✓ | 0.1 |
 | Context | ✓ | 0.1 |
 | Actions (entry/exit/transition) | ✓ | 0.1 |
-| Always transitions | ✗ | 0.2 |
-| History states | ✗ | 0.2 |
+| Always transitions | ✓ | 0.2 |
+| History states | ✓ | 0.2 |
 | Delayed transitions (after) | ✗ | 0.2 |
 | Invoked actors | ✗ | 0.2 |
 | Spawned actors | ✗ | 0.3 |
 | Actor systems | ✗ | 0.3 |
-| Persistence (serialize/restore) | ✗ | 0.2 |
-| **TOTAL (0.1 targets)** | **8/9** | **0.1** |
+| Persistence (serialize/restore) | ✓ | 0.2 |
+| **TOTAL (0.1 targets)** | **9/9** | **0.1** |
+| **TOTAL (0.2 targets)** | **2/6** | **0.2** |
 
 ---
 
@@ -202,6 +203,8 @@ Test vectors live in `tests/compatibility/machines/` organized by category:
 - `final/` — final states (simple, compound, parallel)
 - `initial/` — initial state resolution (deep, parallel, compound)
 - `actions/` — entry/exit/transition actions (entry-exit, nested, reenter)
+- `persistence/` — snapshot save/restore (round-trip)
+- `always/` — eventless transitions (simple)
 
 ### Runners
 
@@ -345,4 +348,4 @@ All 7 planned phases complete. 92 tests pass. 14/16 xstate.js compatibility vect
 
 ---
 
-*Last updated: Phase 7 (NAPI-RS bindings) — all 7 planned phases complete*
+*Last updated: Phase 0.2 (Persistence + Always transitions + History)*

@@ -8,3 +8,4 @@ publish = false
 xstate-macro = { path = "../../crates/xstate-macro" }
 xstate-core = { path = "../../crates/xstate-core" }
 serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }

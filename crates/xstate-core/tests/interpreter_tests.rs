@@ -56,15 +56,21 @@ fn toggle_machine_basic_transitions() {
     assert_eq!(initial, StateValue::Atomic("inactive".into()));
 
     let mut ctx = interpreter.initial_context();
-    let no_guards = |_: &str, _: &serde_json::Value| true;
-    let mut no_actions = |_: &str, _: &[serde_json::Value]| {};
+    let no_guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+    let mut no_actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
 
-    let after_toggle = interpreter.send(&initial, "toggle", &mut ctx, &no_guards, &mut no_actions);
+    let after_toggle = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "toggle"}),
+        &mut ctx,
+        &no_guards,
+        &mut no_actions,
+    );
     assert_eq!(after_toggle, Some(StateValue::Atomic("active".into())));
 
     let after_toggle_again = interpreter.send(
         &StateValue::Atomic("active".into()),
-        "toggle",
+        &serde_json::json!({"type": "toggle"}),
         &mut ctx,
         &no_guards,
         &mut no_actions,
@@ -76,7 +82,7 @@ fn toggle_machine_basic_transitions() {
 
     let unknown = interpreter.send(
         &StateValue::Atomic("inactive".into()),
-        "unknown",
+        &serde_json::json!({"type": "unknown"}),
         &mut ctx,
         &no_guards,
         &mut no_actions,
@@ -215,13 +221,25 @@ fn traffic_light_compound_state() {
     );
 
     let mut ctx = interpreter.initial_context();
-    let no_guards = |_: &str, _: &serde_json::Value| true;
-    let mut no_actions = |_: &str, _: &[serde_json::Value]| {};
+    let no_guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+    let mut no_actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
 
-    let after_timer = interpreter.send(&initial, "timer", &mut ctx, &no_guards, &mut no_actions);
+    let after_timer = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "timer"}),
+        &mut ctx,
+        &no_guards,
+        &mut no_actions,
+    );
     assert_eq!(after_timer, Some(StateValue::Atomic("green".into())));
 
-    let after_reset = interpreter.send(&initial, "reset", &mut ctx, &no_guards, &mut no_actions);
+    let after_reset = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "reset"}),
+        &mut ctx,
+        &no_guards,
+        &mut no_actions,
+    );
     assert_eq!(
         after_reset,
         Some(StateValue::Compound {
@@ -234,11 +252,22 @@ fn traffic_light_compound_state() {
         state: "red".into(),
         child: Box::new(StateValue::Atomic("stop".into())),
     };
-    let from_final = interpreter.send(&red_stop, "reset", &mut ctx, &no_guards, &mut no_actions);
+    let from_final = interpreter.send(
+        &red_stop,
+        &serde_json::json!({"type": "reset"}),
+        &mut ctx,
+        &no_guards,
+        &mut no_actions,
+    );
     assert_eq!(from_final, None);
 
-    let from_final_timer =
-        interpreter.send(&red_stop, "timer", &mut ctx, &no_guards, &mut no_actions);
+    let from_final_timer = interpreter.send(
+        &red_stop,
+        &serde_json::json!({"type": "timer"}),
+        &mut ctx,
+        &no_guards,
+        &mut no_actions,
+    );
     assert_eq!(from_final_timer, Some(StateValue::Atomic("green".into())));
 }
 
@@ -304,15 +333,26 @@ fn transition_with_guard() {
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
     let mut ctx = interpreter.initial_context();
-    let mut no_actions = |_: &str, _: &[serde_json::Value]| {};
+    let mut no_actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
 
-    let guard_true = |_: &str, _: &serde_json::Value| true;
-    let result_true = interpreter.send(&initial, "SUBMIT", &mut ctx, &guard_true, &mut no_actions);
+    let guard_true = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+    let result_true = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "SUBMIT"}),
+        &mut ctx,
+        &guard_true,
+        &mut no_actions,
+    );
     assert_eq!(result_true, Some(StateValue::Atomic("submitted".into())));
 
-    let guard_false = |_: &str, _: &serde_json::Value| false;
-    let result_false =
-        interpreter.send(&initial, "SUBMIT", &mut ctx, &guard_false, &mut no_actions);
+    let guard_false = |_: &str, _: &serde_json::Value, _: &serde_json::Value| false;
+    let result_false = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "SUBMIT"}),
+        &mut ctx,
+        &guard_false,
+        &mut no_actions,
+    );
     assert_eq!(result_false, Some(StateValue::Atomic("error".into())));
 }
 
@@ -362,14 +402,20 @@ fn entry_exit_actions() {
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
     let mut ctx = interpreter.initial_context();
-    let no_guards = |_: &str, _: &serde_json::Value| true;
+    let no_guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
     let mut actions_log: Vec<String> = Vec::new();
-    let mut log_actions = |name: &str, _args: &[serde_json::Value]| {
+    let mut log_actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
         actions_log.push(name.to_string());
     };
 
-    let _result = interpreter.send(&initial, "toggle", &mut ctx, &no_guards, &mut log_actions);
+    let _result = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "toggle"}),
+        &mut ctx,
+        &no_guards,
+        &mut log_actions,
+    );
 
     assert_eq!(actions_log.len(), 2);
     assert_eq!(actions_log[0], "onIdleExit");
@@ -419,14 +465,20 @@ fn transition_actions_order() {
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
     let mut ctx = interpreter.initial_context();
-    let no_guards = |_: &str, _: &serde_json::Value| true;
+    let no_guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
     let mut actions_log: Vec<String> = Vec::new();
-    let mut log_actions = |name: &str, _args: &[serde_json::Value]| {
+    let mut log_actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
         actions_log.push(name.to_string());
     };
 
-    let _result = interpreter.send(&initial, "toggle", &mut ctx, &no_guards, &mut log_actions);
+    let _result = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "toggle"}),
+        &mut ctx,
+        &no_guards,
+        &mut log_actions,
+    );
 
     assert_eq!(actions_log.len(), 3);
     assert_eq!(actions_log[0], "onIdleExit");
@@ -545,10 +597,16 @@ fn event_bubbling() {
     );
 
     let mut ctx = interpreter.initial_context();
-    let no_guards = |_: &str, _: &serde_json::Value| true;
-    let mut no_actions = |_: &str, _: &[serde_json::Value]| {};
+    let no_guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+    let mut no_actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
 
-    let result = interpreter.send(&initial, "ping", &mut ctx, &no_guards, &mut no_actions);
+    let result = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "ping"}),
+        &mut ctx,
+        &no_guards,
+        &mut no_actions,
+    );
     assert_eq!(result, Some(StateValue::Atomic("other".into())));
 }
 
@@ -582,16 +640,22 @@ fn transition_with_no_target() {
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
     let mut ctx = interpreter.initial_context();
-    let no_guards = |_: &str, _: &serde_json::Value| true;
+    let no_guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
 
     let mut actions_called = false;
-    let mut check_action = |name: &str, args: &[serde_json::Value]| {
+    let mut check_action = |name: &str, args: &[serde_json::Value], _: &serde_json::Value| {
         assert_eq!(name, "logEvent");
         assert_eq!(args, &[serde_json::json!("event")]);
         actions_called = true;
     };
 
-    let result = interpreter.send(&initial, "log", &mut ctx, &no_guards, &mut check_action);
+    let result = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "log"}),
+        &mut ctx,
+        &no_guards,
+        &mut check_action,
+    );
     assert!(actions_called);
     assert_eq!(result, Some(StateValue::Atomic("idle".into())));
 }
@@ -623,9 +687,15 @@ fn final_state_no_transitions() {
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
     let mut ctx = interpreter.initial_context();
-    let no_guards = |_: &str, _: &serde_json::Value| true;
-    let mut no_actions = |_: &str, _: &[serde_json::Value]| {};
+    let no_guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+    let mut no_actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
 
-    let result = interpreter.send(&initial, "RESTART", &mut ctx, &no_guards, &mut no_actions);
+    let result = interpreter.send(
+        &initial,
+        &serde_json::json!({"type": "RESTART"}),
+        &mut ctx,
+        &no_guards,
+        &mut no_actions,
+    );
     assert_eq!(result, None);
 }

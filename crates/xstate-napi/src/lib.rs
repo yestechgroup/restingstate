@@ -57,30 +57,26 @@ impl JsMachine {
     pub fn send(&self, event_json: String) -> napi::Result<Option<String>> {
         let event: serde_json::Value = serde_json::from_str(&event_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid event JSON: {}", e)))?;
-        let event_type = event["type"]
-            .as_str()
-            .ok_or_else(|| napi::Error::from_reason("Event must have a 'type' field"))?;
 
         let mut context = self.context.borrow_mut();
         let current_state = self.state.borrow().clone();
 
-        let guards = |name: &str, ctx: &serde_json::Value| -> bool {
-            if let Some(val) = ctx.get(name) {
-                matches!(val, serde_json::Value::Bool(true))
-            } else {
-                true
-            }
-        };
+        let guards =
+            |name: &str, ctx: &serde_json::Value, _event_payload: &serde_json::Value| -> bool {
+                if let Some(val) = ctx.get(name) {
+                    matches!(val, serde_json::Value::Bool(true))
+                } else {
+                    true
+                }
+            };
 
-        let mut actions = |_name: &str, _args: &[serde_json::Value]| {};
+        let mut actions =
+            |_name: &str, _args: &[serde_json::Value], _event_payload: &serde_json::Value| {};
 
-        match self.interpreter.send(
-            &current_state,
-            event_type,
-            &mut context,
-            &guards,
-            &mut actions,
-        ) {
+        match self
+            .interpreter
+            .send(&current_state, &event, &mut context, &guards, &mut actions)
+        {
             Some(new_state) => {
                 *self.state.borrow_mut() = new_state;
                 let state_value = serde_json::to_value(&*self.state.borrow())

@@ -6,7 +6,7 @@ xstate!("machines/token-bucket.ts");
 #[allow(dead_code)]
 struct TokenBucketActions;
 impl Actions<Context> for TokenBucketActions {
-    fn dispatch(&mut self, name: &str, ctx: &mut Context) {
+    fn dispatch(&mut self, name: &str, ctx: &mut Context, _event_payload: &serde_json::Value) {
         if name == "decrementToken" {
             ctx.tokens -= 1;
         }
@@ -16,7 +16,7 @@ impl Actions<Context> for TokenBucketActions {
 #[allow(dead_code)]
 struct TokenBucketGuards;
 impl Guards<Context> for TokenBucketGuards {
-    fn evaluate(&self, name: &str, ctx: &Context) -> bool {
+    fn evaluate(&self, name: &str, ctx: &Context, _event_payload: &serde_json::Value) -> bool {
         if name == "hasTokens" {
             ctx.tokens > 0
         } else {
@@ -34,7 +34,12 @@ fn main() {
     println!("Initial context: {:?}", ctx);
     println!("Tokens: {}", ctx.tokens);
 
-    let new_state = machine.transition(&State::Ready, &Event::Consume, &mut ctx);
+    let new_state = machine.transition(
+        &State::Ready,
+        &Event::Consume,
+        &Default::default(),
+        &mut ctx,
+    );
     println!("After CONSUME: {:?}", new_state);
 }
 
@@ -59,7 +64,12 @@ mod tests {
     fn consume_with_tokens_stays_ready() {
         let machine = MachineImpl;
         let mut ctx = machine.initial_context();
-        let new_state = machine.transition(&State::Ready, &Event::Consume, &mut ctx);
+        let new_state = machine.transition(
+            &State::Ready,
+            &Event::Consume,
+            &Default::default(),
+            &mut ctx,
+        );
         assert_eq!(new_state, State::Ready);
     }
 
@@ -67,7 +77,8 @@ mod tests {
     fn refill_from_empty_goes_to_ready() {
         let machine = MachineImpl;
         let mut ctx = machine.initial_context();
-        let new_state = machine.transition(&State::Empty, &Event::Refill, &mut ctx);
+        let new_state =
+            machine.transition(&State::Empty, &Event::Refill, &Default::default(), &mut ctx);
         assert_eq!(new_state, State::Ready);
     }
 }

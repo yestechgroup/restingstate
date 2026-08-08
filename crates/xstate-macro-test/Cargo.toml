@@ -11,3 +11,4 @@ path = "src/lib.rs"
 xstate-macro = { path = "../xstate-macro" }
 xstate-core = { path = "../xstate-core" }
 serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }

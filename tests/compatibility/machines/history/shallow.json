@@ -1,0 +1,74 @@
+{
+  "machine_name": "historyShallow",
+  "machine_ir": {
+    "id": "historyShallow",
+    "initial": "main",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "main",
+        "type": "compound",
+        "initial": "idle",
+        "transitions": [{ "event": "SWITCH", "target": "other" }],
+        "children": [
+          {
+            "name": "idle",
+            "type": "atomic",
+            "transitions": [{ "event": "NEXT", "target": "active" }]
+          },
+          { "name": "active", "type": "atomic", "transitions": [] },
+          { "name": "hist", "type": "history", "transitions": [] }
+        ]
+      },
+      {
+        "name": "other",
+        "type": "atomic",
+        "transitions": [{ "event": "BACK", "target": "hist" }]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "historyShallow",
+    "initial": "main",
+    "context": {},
+    "states": {
+      "main": {
+        "initial": "idle",
+        "states": {
+          "idle": { "on": { "NEXT": "active" } },
+          "active": {},
+          "hist": { "type": "history" }
+        },
+        "on": { "SWITCH": "other" }
+      },
+      "other": {
+        "on": { "BACK": "main.hist" }
+      }
+    }
+  },
+  "protocol": {
+    "initial": { "value": { "main": "idle" }, "context": {} },
+    "events": [
+      { "type": "NEXT" },
+      { "type": "SWITCH" },
+      { "type": "BACK" }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": { "type": "NEXT" },
+      "snapshot": { "value": { "main": "active" }, "context": {} }
+    },
+    {
+      "step": 1,
+      "event": { "type": "SWITCH" },
+      "snapshot": { "value": "other", "context": {} }
+    },
+    {
+      "step": 2,
+      "event": { "type": "BACK" },
+      "snapshot": { "value": { "main": "active" }, "context": {} }
+    }
+  ]
+}

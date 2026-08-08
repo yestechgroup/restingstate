@@ -1,8 +1,9 @@
 # XState Conformance
 
 restingstate targets [xstate v5](https://github.com/statelyai/xstate) and
-continuously tests compatibility against 16 test vectors derived from the
-xstate.js test suite. Snapshots from both runtimes are compared automatically
+continuously tests compatibility against 17 test vectors derived from the
+xstate.js test suite. Phase 0.2 features (persistence and always transitions)
+have been implemented. Snapshots from both runtimes are compared automatically
 in CI.
 
 ## Conformance Table
@@ -18,13 +19,13 @@ in CI.
 | Context | ✓ | typed fields, JSON serialization |
 | Actions (entry/exit/transition) | ✓ | identifier storage, trait-based execution |
 | Event payload | ✗ | only `{ type: string }` events currently |
-| Always transitions | ✗ | planned 0.2 |
+| Always transitions | ✓ | |
 | History states | ✗ | planned 0.2 |
 | Delayed transitions (after) | ✗ | planned 0.2 |
 | Invoked actors | ✗ | planned 0.2 |
 | Spawned actors | ✗ | planned 0.3 |
 | Actor systems | ✗ | planned 0.3 |
-| Persistence (serialize/restore) | ✗ | planned 0.2 |
+| Persistence (serialize/restore) | ✓ | |
 
 **Pass rate:** 14/16 vectors (88%).
 
