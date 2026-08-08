@@ -20,6 +20,7 @@ fn golden_simple_toggle() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -37,6 +38,7 @@ fn golden_simple_toggle() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -113,6 +115,7 @@ fn golden_traffic_light() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -130,6 +133,7 @@ fn golden_traffic_light() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -147,6 +151,7 @@ fn golden_traffic_light() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -273,6 +278,7 @@ fn golden_with_guards() {
                     }),
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -336,6 +342,7 @@ fn golden_with_entry_exit_actions() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -384,5 +391,65 @@ fn golden_with_entry_exit_actions() {
     assert!(
         n.contains("_payload : & Self :: EventPayload"),
         "missing _payload parameter in transition"
+    );
+}
+
+#[test]
+fn golden_excludes_delayed_transitions_from_event_enum() {
+    let machine = Machine {
+        id: "afterTest".into(),
+        initial: "idle".into(),
+        context: ContextSchema { fields: vec![] },
+        states: vec![
+            StateNode {
+                name: "idle".into(),
+                transitions: vec![
+                    Transition {
+                        event: "after".into(),
+                        target: Some("active".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: Some(1000),
+                    },
+                    Transition {
+                        event: "MANUAL".into(),
+                        target: Some("active".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                    },
+                ],
+                children: vec![],
+                node_type: StateType::Atomic,
+                entry: vec![],
+                exit: vec![],
+                initial: None,
+                tags: vec![],
+                description: None,
+            },
+            StateNode {
+                name: "active".into(),
+                transitions: vec![],
+                children: vec![],
+                node_type: StateType::Atomic,
+                entry: vec![],
+                exit: vec![],
+                initial: None,
+                tags: vec![],
+                description: None,
+            },
+        ],
+    };
+
+    let output = generate(&machine).unwrap().to_string();
+    let n = normalize(&output);
+
+    assert!(n.contains("pub enum Event"), "missing Event enum");
+    assert!(n.contains("Manual"), "manual event should be in the enum");
+    assert!(
+        !n.contains("Event :: After") && !n.contains("Event::After"),
+        "delayed transition event should not appear in event enum"
     );
 }

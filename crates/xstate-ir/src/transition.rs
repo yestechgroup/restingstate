@@ -11,6 +11,8 @@ pub struct Transition {
     pub actions: Vec<Action>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delay_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +71,7 @@ mod tests {
             guard: None,
             actions: vec![],
             description: None,
+            delay_ms: None,
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();
@@ -85,6 +88,7 @@ mod tests {
             }),
             actions: vec![],
             description: Some("Submit form if valid".into()),
+            delay_ms: None,
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();
@@ -108,6 +112,7 @@ mod tests {
                 },
             ],
             description: None,
+            delay_ms: None,
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();
@@ -125,6 +130,52 @@ mod tests {
                 args: vec![],
             }],
             description: None,
+            delay_ms: None,
+        };
+        let json = serde_json::to_string_pretty(&transition).unwrap();
+        let round_tripped: Transition = serde_json::from_str(&json).unwrap();
+        assert_eq!(transition, round_tripped);
+    }
+
+    #[test]
+    fn transition_without_delay_round_trip() {
+        let transition = Transition {
+            event: "pause".into(),
+            target: Some("paused".into()),
+            guard: None,
+            actions: vec![],
+            description: None,
+            delay_ms: None,
+        };
+        let json = serde_json::to_string_pretty(&transition).unwrap();
+        let round_tripped: Transition = serde_json::from_str(&json).unwrap();
+        assert_eq!(transition, round_tripped);
+    }
+
+    #[test]
+    fn transition_with_delay_round_trip() {
+        let transition = Transition {
+            event: "timeout".into(),
+            target: Some("error".into()),
+            guard: None,
+            actions: vec![],
+            description: Some("Delayed timeout".into()),
+            delay_ms: Some(1000),
+        };
+        let json = serde_json::to_string_pretty(&transition).unwrap();
+        let round_tripped: Transition = serde_json::from_str(&json).unwrap();
+        assert_eq!(transition, round_tripped);
+    }
+
+    #[test]
+    fn transition_with_zero_delay_round_trip() {
+        let transition = Transition {
+            event: "immediate".into(),
+            target: Some("next".into()),
+            guard: None,
+            actions: vec![],
+            description: None,
+            delay_ms: Some(0),
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();

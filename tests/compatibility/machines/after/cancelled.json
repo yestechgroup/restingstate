@@ -1,0 +1,46 @@
+{
+  "machine_name": "afterCancelled",
+  "machine_ir": {
+    "id": "afterCancelled",
+    "initial": "waiting",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "waiting",
+        "type": "atomic",
+        "transitions": [
+          { "event": "", "target": "timedOut", "delay_ms": 5000 },
+          { "event": "BUTTON", "target": "success" }
+        ]
+      },
+      { "name": "timedOut", "type": "atomic", "transitions": [] },
+      { "name": "success", "type": "atomic", "transitions": [] }
+    ]
+  },
+  "machine_config": {
+    "id": "afterCancelled",
+    "initial": "waiting",
+    "context": {},
+    "states": {
+      "waiting": {
+        "after": { "5000": "timedOut" },
+        "on": { "BUTTON": "success" }
+      },
+      "timedOut": {},
+      "success": {}
+    }
+  },
+  "protocol": {
+    "initial": { "value": "waiting", "context": {} },
+    "events": [
+      { "type": "BUTTON" }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": { "type": "BUTTON" },
+      "snapshot": { "value": "success", "context": {} }
+    }
+  ]
+}

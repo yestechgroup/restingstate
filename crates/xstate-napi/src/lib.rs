@@ -1,5 +1,6 @@
 use napi_derive::napi;
 use std::cell::RefCell;
+use xstate_core::clock::InstantClock;
 use xstate_core::{Interpreter, StateValue};
 use xstate_ir::Machine;
 
@@ -73,10 +74,16 @@ impl JsMachine {
         let mut actions =
             |_name: &str, _args: &[serde_json::Value], _event_payload: &serde_json::Value| {};
 
-        match self
-            .interpreter
-            .send(&current_state, &event, &mut context, &guards, &mut actions)
-        {
+        let clock = InstantClock::new();
+
+        match self.interpreter.send(
+            &current_state,
+            &event,
+            &mut context,
+            &guards,
+            &mut actions,
+            &clock,
+        ) {
             Some(new_state) => {
                 *self.state.borrow_mut() = new_state;
                 let state_value = serde_json::to_value(&*self.state.borrow())
@@ -117,6 +124,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -134,6 +142,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,

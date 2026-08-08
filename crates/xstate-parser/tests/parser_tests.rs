@@ -190,3 +190,29 @@ fn parse_setup_machine() {
     assert_eq!(running.transitions[0].event, "STOP");
     assert_eq!(running.transitions[0].target.as_deref(), Some("idle"));
 }
+
+#[test]
+fn parse_after_machine() {
+    let source = fixture!("after");
+    let machine = parse(&source).unwrap();
+
+    assert_eq!(machine.id, "afterTest");
+    assert_eq!(machine.initial, "green");
+
+    let green = machine.states.iter().find(|s| s.name == "green").unwrap();
+    assert_eq!(green.transitions.len(), 1);
+    let green_after = &green.transitions[0];
+    assert_eq!(green_after.delay_ms, Some(1000));
+    assert_eq!(green_after.target.as_deref(), Some("yellow"));
+    assert_eq!(green_after.event, "");
+
+    let yellow = machine.states.iter().find(|s| s.name == "yellow").unwrap();
+    assert_eq!(yellow.transitions.len(), 1);
+    let yellow_after = &yellow.transitions[0];
+    assert_eq!(yellow_after.delay_ms, Some(1000));
+    assert_eq!(yellow_after.target.as_deref(), Some("red"));
+    assert_eq!(yellow_after.event, "");
+
+    let red = machine.states.iter().find(|s| s.name == "red").unwrap();
+    assert!(red.transitions.is_empty());
+}

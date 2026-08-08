@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_parser::Parser;
@@ -22,7 +24,9 @@ pub fn parse(source: &str) -> Result<Machine, ParseError> {
 fn extract_machine(program: &Program) -> Result<Machine, ParseError> {
     for stmt in program.body.iter() {
         match find_create_machine_in_stmt(stmt) {
-            SearchResult::Found(config) => return extract_machine_from_config(config),
+            SearchResult::Found(config, delays) => {
+                return extract_machine_from_config(config, &delays)
+            }
             SearchResult::NotFound => {}
         }
     }
@@ -33,7 +37,7 @@ fn extract_machine(program: &Program) -> Result<Machine, ParseError> {
 }
 
 enum SearchResult<'a> {
-    Found(&'a ObjectExpression<'a>),
+    Found(&'a ObjectExpression<'a>, HashMap<String, u64>),
     NotFound,
 }
 
@@ -47,7 +51,9 @@ fn find_create_machine_in_stmt<'a>(stmt: &'a Statement<'a>) -> SearchResult<'a> 
             for decl in vd.declarations.iter() {
                 if let Some(init) = &decl.init {
                     match find_create_machine_in_expr(init) {
-                        SearchResult::Found(config) => return SearchResult::Found(config),
+                        SearchResult::Found(config, delays) => {
+                            return SearchResult::Found(config, delays)
+                        }
                         SearchResult::NotFound => {}
                     }
                 }
@@ -79,7 +85,9 @@ fn find_create_machine_in_declaration<'a>(decl: &'a Declaration<'a>) -> SearchRe
             for declarator in vd.declarations.iter() {
                 if let Some(init) = &declarator.init {
                     match find_create_machine_in_expr(init) {
-                        SearchResult::Found(config) => return SearchResult::Found(config),
+                        SearchResult::Found(config, delays) => {
+                            return SearchResult::Found(config, delays)
+                        }
                         SearchResult::NotFound => {}
                     }
                 }
@@ -102,15 +110,15 @@ fn find_create_machine_in_export_default_kind<'a>(
 }
 
 fn find_create_machine_in_expr<'a>(expr: &'a Expression<'a>) -> SearchResult<'a> {
-    if let Some(config) = try_extract_create_machine_config(expr) {
-        return SearchResult::Found(config);
+    if let Some((config, delays)) = try_extract_create_machine_config(expr) {
+        return SearchResult::Found(config, delays);
     }
     SearchResult::NotFound
 }
 
 fn try_extract_create_machine_config<'a>(
     expr: &'a Expression<'a>,
-) -> Option<&'a ObjectExpression<'a>> {
+) -> Option<(&'a ObjectExpression<'a>, HashMap<String, u64>)> {
     let call = match expr {
         Expression::CallExpression(call) => call,
         _ => return None,
@@ -128,16 +136,40 @@ fn try_extract_create_machine_config<'a>(
         return None;
     }
 
-    call.arguments
+    let config = call
+        .arguments
         .first()
         .and_then(|arg| arg.as_expression())
         .and_then(|expr| match expr {
             Expression::ObjectExpression(obj) => Some(obj.as_ref()),
             _ => None,
-        })
+        })?;
+
+    let delays = if let Expression::StaticMemberExpression(member) = &call.callee {
+        if let Expression::CallExpression(setup_call) = &member.object {
+            if let Expression::Identifier(ident) = &setup_call.callee {
+                if ident.name.as_ref() == "setup" {
+                    extract_delays_from_setup_params(setup_call)
+                } else {
+                    HashMap::new()
+                }
+            } else {
+                HashMap::new()
+            }
+        } else {
+            HashMap::new()
+        }
+    } else {
+        HashMap::new()
+    };
+
+    Some((config, delays))
 }
 
-fn extract_machine_from_config(obj: &ObjectExpression) -> Result<Machine, ParseError> {
+fn extract_machine_from_config(
+    obj: &ObjectExpression,
+    delays: &HashMap<String, u64>,
+) -> Result<Machine, ParseError> {
     let id = extract_string_prop(obj, "id")
         .ok_or_else(|| ParseError::InvalidMachine("Machine missing 'id'".into()))?;
 
@@ -155,7 +187,9 @@ fn extract_machine_from_config(obj: &ObjectExpression) -> Result<Machine, ParseE
     let states = obj
         .get_object_prop_value("states")
         .and_then(|expr| match expr {
-            Expression::ObjectExpression(states_obj) => Some(extract_states_object(states_obj)),
+            Expression::ObjectExpression(states_obj) => {
+                Some(extract_states_object(states_obj, delays))
+            }
             _ => None,
         })
         .transpose()?
@@ -167,6 +201,37 @@ fn extract_machine_from_config(obj: &ObjectExpression) -> Result<Machine, ParseE
         context,
         states,
     })
+}
+
+fn extract_delays_from_setup_params(call: &CallExpression) -> HashMap<String, u64> {
+    let mut delays = HashMap::new();
+
+    let setup_config = call.arguments.first().and_then(|arg| arg.as_expression());
+
+    let setup_config = match setup_config {
+        Some(Expression::ObjectExpression(obj)) => obj,
+        _ => return delays,
+    };
+
+    let delays_obj = match setup_config.get_object_prop_value("delays") {
+        Some(Expression::ObjectExpression(obj)) => obj,
+        _ => return delays,
+    };
+
+    for prop in delays_obj.properties.iter() {
+        if let ObjectPropertyKind::ObjectProperty(p) = prop {
+            let name = property_key_name(&p.key).map(|n| n.to_string());
+            let delay_ms = match &p.value {
+                Expression::NumericLiteral(n) => Some(n.value as u64),
+                _ => None,
+            };
+            if let (Some(name), Some(ms)) = (name, delay_ms) {
+                delays.insert(name, ms);
+            }
+        }
+    }
+
+    delays
 }
 
 // ---------------------------------------------------------------------------
@@ -202,15 +267,17 @@ fn extract_string_array(arr: &ArrayExpression) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 fn property_key_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
-    // Check StaticIdentifier first for unquoted keys like `id`, `initial`, `states`
     if let PropertyKey::StaticIdentifier(id) = key {
         return Some(id.name.as_ref());
     }
-    // Check StringLiteral for quoted keys like `"id"`
     if let PropertyKey::StringLiteral(s) = key {
         return Some(s.value.as_ref());
     }
-    // For numeric keys, etc. — skip
+    if let PropertyKey::NumericLiteral(n) = key {
+        if let Some(ref raw) = n.raw {
+            return Some(raw.as_ref());
+        }
+    }
     None
 }
 
@@ -310,7 +377,10 @@ fn expr_to_type_and_value(expr: &Expression) -> (String, serde_json::Value) {
 // States
 // ---------------------------------------------------------------------------
 
-fn extract_states_object(obj: &ObjectExpression) -> Result<Vec<StateNode>, ParseError> {
+fn extract_states_object(
+    obj: &ObjectExpression,
+    delays: &HashMap<String, u64>,
+) -> Result<Vec<StateNode>, ParseError> {
     let mut states = Vec::new();
 
     for prop in obj.properties.iter() {
@@ -321,7 +391,7 @@ fn extract_states_object(obj: &ObjectExpression) -> Result<Vec<StateNode>, Parse
             };
 
             if let Expression::ObjectExpression(state_obj) = &p.value {
-                let state = extract_state_node(&name, state_obj)?;
+                let state = extract_state_node(&name, state_obj, delays)?;
                 states.push(state);
             }
         }
@@ -330,7 +400,11 @@ fn extract_states_object(obj: &ObjectExpression) -> Result<Vec<StateNode>, Parse
     Ok(states)
 }
 
-fn extract_state_node(name: &str, obj: &ObjectExpression) -> Result<StateNode, ParseError> {
+fn extract_state_node(
+    name: &str,
+    obj: &ObjectExpression,
+    delays: &HashMap<String, u64>,
+) -> Result<StateNode, ParseError> {
     let description = extract_string_prop(obj, "description");
 
     let node_type = extract_string_prop(obj, "type")
@@ -374,10 +448,24 @@ fn extract_state_node(name: &str, obj: &ObjectExpression) -> Result<StateNode, P
         .transpose()?
         .unwrap_or_default();
 
+    // after (delayed) transitions
+    let after_transitions: Vec<Transition> = obj
+        .get_object_prop_value("after")
+        .and_then(|expr| match expr {
+            Expression::ObjectExpression(after_obj) => {
+                Some(extract_after_transitions(after_obj, delays))
+            }
+            _ => None,
+        })
+        .transpose()?
+        .unwrap_or_default();
+
     let children = obj
         .get_object_prop_value("states")
         .and_then(|expr| match expr {
-            Expression::ObjectExpression(children_obj) => Some(extract_states_object(children_obj)),
+            Expression::ObjectExpression(children_obj) => {
+                Some(extract_states_object(children_obj, delays))
+            }
             _ => None,
         })
         .transpose()?
@@ -393,6 +481,7 @@ fn extract_state_node(name: &str, obj: &ObjectExpression) -> Result<StateNode, P
 
     let mut all_transitions = transitions;
     all_transitions.extend(always_transitions);
+    all_transitions.extend(after_transitions);
 
     Ok(StateNode {
         name: name.to_string(),
@@ -451,6 +540,7 @@ fn extract_transition_value(
             event: event.to_string(),
             target: Some(s.value.to_string()),
             guard: None,
+            delay_ms: None,
             actions: vec![],
             description: None,
         }]),
@@ -478,6 +568,7 @@ fn extract_single_transition(event: &str, expr: &Expression) -> Transition {
             event: event.to_string(),
             target: Some(s.value.to_string()),
             guard: None,
+            delay_ms: None,
             actions: vec![],
             description: None,
         },
@@ -486,6 +577,7 @@ fn extract_single_transition(event: &str, expr: &Expression) -> Transition {
             event: event.to_string(),
             target: None,
             guard: None,
+            delay_ms: None,
             actions: vec![],
             description: None,
         },
@@ -512,6 +604,7 @@ fn extract_transition_from_obj(event: &str, obj: &ObjectExpression) -> Transitio
         guard,
         actions,
         description,
+        delay_ms: None,
     }
 }
 
@@ -530,12 +623,46 @@ fn extract_always_transitions(arr: &ArrayExpression) -> Result<Vec<Transition>, 
                         event: String::new(),
                         target: Some(s.value.to_string()),
                         guard: None,
+                        delay_ms: None,
                         actions: vec![],
                         description: None,
                     });
                 }
                 _ => {}
             }
+        }
+    }
+
+    Ok(transitions)
+}
+
+fn extract_after_transitions(
+    after_obj: &ObjectExpression,
+    delays: &HashMap<String, u64>,
+) -> Result<Vec<Transition>, ParseError> {
+    let mut transitions = Vec::new();
+
+    for prop in after_obj.properties.iter() {
+        let ObjectPropertyKind::ObjectProperty(ref obj_prop) = prop else {
+            continue;
+        };
+
+        let key_name = property_key_name(&obj_prop.key);
+
+        let delay_ms = if let Some(name) = key_name {
+            if let Ok(ms) = name.parse::<u64>() {
+                Some(ms)
+            } else {
+                delays.get(name).copied()
+            }
+        } else {
+            None
+        };
+
+        let event_transitions = extract_transition_value("", &obj_prop.value)?;
+        for mut t in event_transitions {
+            t.delay_ms = delay_ms;
+            transitions.push(t);
         }
     }
 

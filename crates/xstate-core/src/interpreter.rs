@@ -2,11 +2,13 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use xstate_ir::{Machine, StateNode, StateType};
 
+use crate::clock::Clock;
 use crate::state_value::StateValue;
 
 pub struct Interpreter {
     machine: Machine,
     history: RefCell<HashMap<String, StateValue>>,
+    entry_times: RefCell<HashMap<String, u64>>,
 }
 
 impl Interpreter {
@@ -14,9 +16,37 @@ impl Interpreter {
         let interpreter = Interpreter {
             machine,
             history: RefCell::new(HashMap::new()),
+            entry_times: RefCell::new(HashMap::new()),
         };
         interpreter.record_initial_history();
+        interpreter.record_initial_entry_times();
         interpreter
+    }
+
+    fn record_initial_entry_times(&self) {
+        let initial_name = self.machine.initial.clone();
+        if let Some(node) = self.find_root_state(&initial_name) {
+            self.record_entry_time_for_node(node);
+        }
+    }
+
+    fn record_entry_time_for_node(&self, node: &StateNode) {
+        self.entry_times.borrow_mut().insert(node.name.clone(), 0);
+        match &node.node_type {
+            StateType::Compound => {
+                if let Some(initial_name) = &node.initial {
+                    if let Some(child) = node.children.iter().find(|c| &c.name == initial_name) {
+                        self.record_entry_time_for_node(child);
+                    }
+                }
+            }
+            StateType::Parallel => {
+                for child in &node.children {
+                    self.record_entry_time_for_node(child);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn record_initial_history(&self) {
@@ -121,15 +151,16 @@ impl Interpreter {
         context: &mut serde_json::Value,
         guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
     ) -> Option<StateValue> {
         let event_type = event["type"].as_str().unwrap_or("");
         let mut current = state.clone();
         let result = match &current {
             StateValue::Parallel { regions } => {
-                self.send_parallel(regions, event_type, event, context, guards, actions)
+                self.send_parallel(regions, event_type, event, context, guards, actions, clock)
             }
             StateValue::Compound { state: name, child } if self.contains_parallel(child) => {
-                let new_child = self.send(child, event, context, guards, actions)?;
+                let new_child = self.send(child, event, context, guards, actions, clock)?;
                 Some(StateValue::Compound {
                     state: name.clone(),
                     child: Box::new(new_child),
@@ -137,21 +168,49 @@ impl Interpreter {
             }
             _ => {
                 let path = self.find_full_path(&current);
-                self.send_along_path(&path, &current, event_type, event, context, guards, actions)
+                self.send_along_path(
+                    &path, &current, event_type, event, context, guards, actions, clock,
+                )
             }
         };
 
+        let mut changed = false;
         if let Some(ref next_state) = result {
             current = next_state.clone();
+            changed = true;
             for _ in 0..10 {
-                match self.resolve_always(&current, context, guards, actions) {
+                match self.resolve_always(&current, context, guards, actions, clock) {
                     Some(always_state) => current = always_state,
                     None => break,
                 }
             }
+            for _ in 0..10 {
+                match self.resolve_after(&current, context, guards, actions, clock) {
+                    Some(after_state) => current = after_state,
+                    None => break,
+                }
+            }
+        } else {
+            for _ in 0..10 {
+                match self.resolve_after(&current, context, guards, actions, clock) {
+                    Some(after_state) => {
+                        current = after_state;
+                        changed = true;
+                        for _ in 0..10 {
+                            match self.resolve_always(&current, context, guards, actions, clock) {
+                                Some(always_state) => current = always_state,
+                                None => break,
+                            }
+                        }
+                    }
+                    None => break,
+                }
+            }
+        }
+        if changed {
             Some(current)
         } else {
-            result
+            None
         }
     }
 
@@ -161,13 +220,103 @@ impl Interpreter {
         context: &mut serde_json::Value,
         guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
     ) -> Option<StateValue> {
         let path = self.find_full_path(state);
         if path.is_empty() {
             return None;
         }
         let empty_event = serde_json::json!({"type": ""});
-        self.send_along_path(&path, state, "", &empty_event, context, guards, actions)
+        self.send_along_path(
+            &path,
+            state,
+            "",
+            &empty_event,
+            context,
+            guards,
+            actions,
+            clock,
+        )
+    }
+
+    fn resolve_after(
+        &self,
+        state: &StateValue,
+        context: &mut serde_json::Value,
+        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
+    ) -> Option<StateValue> {
+        let path = self.find_full_path(state);
+        if path.is_empty() {
+            return None;
+        }
+        let now = clock.now_ms();
+
+        for node in path.iter().rev() {
+            if node.node_type == StateType::Final {
+                continue;
+            }
+            for transition in &node.transitions {
+                let Some(delay_ms) = transition.delay_ms else {
+                    continue;
+                };
+                let entered_at = self
+                    .entry_times
+                    .borrow()
+                    .get(&node.name)
+                    .copied()
+                    .unwrap_or(0);
+                if now < entered_at + delay_ms {
+                    continue;
+                }
+                if let Some(ref guard) = transition.guard {
+                    if !guards(&guard.name, context, &serde_json::Value::Null) {
+                        continue;
+                    }
+                }
+                if let Some(ref target_name) = transition.target {
+                    let (target_path, target_value) = self.build_target(target_name)?;
+                    let common_prefix = path
+                        .iter()
+                        .zip(target_path.iter())
+                        .take_while(|(s, t)| s.name == t.name)
+                        .count();
+
+                    for i in common_prefix..path.len() {
+                        if i > 0 {
+                            let parent = path[i - 1];
+                            let has_history = parent.children.iter().any(|c| {
+                                c.node_type == StateType::History
+                                    || c.node_type == StateType::DeepHistory
+                            });
+                            if has_history {
+                                let child_value = self.resolve_initial_value(path[i]);
+                                self.history
+                                    .borrow_mut()
+                                    .insert(parent.name.clone(), child_value);
+                            }
+                        }
+                    }
+                    for n in path[common_prefix..].iter().rev() {
+                        for action_name in &n.exit {
+                            actions(action_name, &[], &serde_json::Value::Null);
+                        }
+                    }
+                    for action in &transition.actions {
+                        actions(&action.name, &action.args, &serde_json::Value::Null);
+                    }
+                    for n in &target_path[common_prefix..] {
+                        for action_name in &n.entry {
+                            actions(action_name, &[], &serde_json::Value::Null);
+                        }
+                        self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                    }
+                    return Some(target_value);
+                }
+            }
+        }
+        None
     }
 
     fn contains_parallel(&self, state: &StateValue) -> bool {
@@ -178,6 +327,7 @@ impl Interpreter {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn send_parallel(
         &self,
         regions: &[(String, StateValue)],
@@ -186,6 +336,7 @@ impl Interpreter {
         context: &mut serde_json::Value,
         guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
     ) -> Option<StateValue> {
         let region_name = &regions.first()?.0;
         let region_path = Self::find_node_path_in(&self.machine.states, region_name)?;
@@ -211,6 +362,7 @@ impl Interpreter {
                 context,
                 guards,
                 actions,
+                clock,
             ) {
                 Some(new_value) => {
                     changed = true;
@@ -242,6 +394,7 @@ impl Interpreter {
         context: &mut serde_json::Value,
         guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
     ) -> Option<StateValue> {
         match state {
             StateValue::Atomic(name) => {
@@ -264,6 +417,10 @@ impl Interpreter {
                     if let Some(ref target_name) = transition.target {
                         let target = transition_scope.iter().find(|n| n.name == *target_name)?;
                         let target_value = self.resolve_region_value(target);
+                        let now = clock.now_ms();
+                        self.entry_times
+                            .borrow_mut()
+                            .insert(target.name.clone(), now);
                         for action_name in &node.exit {
                             actions(action_name, &[], event_payload);
                         }
@@ -343,6 +500,7 @@ impl Interpreter {
         context: &mut serde_json::Value,
         guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
     ) -> Option<StateValue> {
         for node in path.iter().rev() {
             if node.node_type == StateType::Final {
@@ -388,6 +546,11 @@ impl Interpreter {
                                 self.history.borrow_mut().insert(parent.name.clone(), value);
                             }
                         }
+                    }
+
+                    let now = clock.now_ms();
+                    for n in &target_path[common_prefix..] {
+                        self.entry_times.borrow_mut().insert(n.name.clone(), now);
                     }
 
                     for n in path[common_prefix..].iter().rev() {
@@ -651,6 +814,7 @@ impl Interpreter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::clock::MockClock;
     use xstate_ir::{
         Action, ContextField, ContextSchema, Guard, StateNode as IrStateNode, StateType, Transition,
     };
@@ -682,6 +846,7 @@ mod tests {
                             args: vec![],
                         }],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -702,6 +867,7 @@ mod tests {
                             args: vec![],
                         }],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -744,6 +910,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
         assert_eq!(new_state, StateValue::Atomic("active".into()));
@@ -765,6 +932,7 @@ mod tests {
             &mut context,
             &guards,
             &mut actions,
+            &MockClock::new(0),
         );
         assert!(result.is_none());
     }
@@ -784,6 +952,7 @@ mod tests {
             &mut context,
             &guards,
             &mut actions,
+            &MockClock::new(0),
         );
         assert!(result.is_none());
     }
@@ -811,6 +980,7 @@ mod tests {
                             args: vec![],
                         }],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -839,6 +1009,7 @@ mod tests {
                                     args: vec![],
                                 }],
                                 description: None,
+                                delay_ms: None,
                             }],
                             children: vec![],
                             node_type: StateType::Atomic,
@@ -856,6 +1027,7 @@ mod tests {
                                 guard: None,
                                 actions: vec![],
                                 description: None,
+                                delay_ms: None,
                             }],
                             children: vec![],
                             node_type: StateType::Atomic,
@@ -906,6 +1078,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -945,6 +1118,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -985,6 +1159,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -1008,6 +1183,7 @@ mod tests {
             &mut context,
             &guards,
             &mut actions,
+            &MockClock::new(0),
         );
         assert!(result.is_none());
     }
@@ -1033,6 +1209,7 @@ mod tests {
                         args: vec![],
                     }],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -1056,6 +1233,7 @@ mod tests {
             &mut context,
             &guards,
             &mut actions,
+            &MockClock::new(0),
         );
         assert_eq!(result, Some(StateValue::Atomic("idle".into())));
         assert!(actions_log.contains(&"logSomething".to_string()));
@@ -1091,6 +1269,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -1140,6 +1319,7 @@ mod tests {
                             guard: None,
                             actions: vec![],
                             description: None,
+                            delay_ms: None,
                         }],
                         children: vec![],
                         node_type: StateType::Atomic,
@@ -1157,6 +1337,7 @@ mod tests {
                             guard: None,
                             actions: vec![],
                             description: None,
+                            delay_ms: None,
                         }],
                         children: vec![],
                         node_type: StateType::Atomic,
@@ -1266,6 +1447,7 @@ mod tests {
                             args: vec![serde_json::json!("key"), serde_json::json!(42)],
                         }],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -1302,6 +1484,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -1329,6 +1512,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![IrStateNode {
                         name: "inner".into(),
@@ -1378,6 +1562,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -1405,6 +1590,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -1441,6 +1627,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -1470,6 +1657,7 @@ mod tests {
                             args: vec![],
                         }],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -1487,6 +1675,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -1512,6 +1701,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -1547,6 +1737,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -1564,6 +1755,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -1598,6 +1790,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
         assert_eq!(new_state, StateValue::Atomic("done".into()));
@@ -1628,6 +1821,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -1647,6 +1841,7 @@ mod tests {
                         }),
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -1684,6 +1879,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -1720,6 +1916,7 @@ mod tests {
                 &mut context,
                 &guards,
                 &mut actions,
+                &MockClock::new(0),
             )
             .unwrap();
         assert_eq!(new_state, StateValue::Atomic("active".into()));
@@ -1744,6 +1941,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![
                         IrStateNode {
@@ -1755,6 +1953,7 @@ mod tests {
                                 guard: None,
                                 actions: vec![],
                                 description: None,
+                                delay_ms: None,
                             }],
                             children: vec![],
                             entry: vec![],
@@ -1801,6 +2000,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -1828,6 +2028,7 @@ mod tests {
                 &mut context,
                 &|_, _, _| true,
                 &mut |_, _, _| {},
+                &MockClock::new(0),
             )
             .unwrap();
 
@@ -1839,6 +2040,7 @@ mod tests {
                 &mut context,
                 &|_, _, _| true,
                 &mut |_, _, _| {},
+                &MockClock::new(0),
             )
             .unwrap();
         assert_eq!(state, StateValue::Atomic("other".into()));
@@ -1852,6 +2054,7 @@ mod tests {
                 &mut context,
                 &|_, _, _| true,
                 &mut |_, _, _| {},
+                &MockClock::new(0),
             )
             .unwrap();
         assert_eq!(

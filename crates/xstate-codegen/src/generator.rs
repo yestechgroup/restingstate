@@ -47,6 +47,9 @@ fn generate_event_enum(machine: &Machine) -> TokenStream {
     let mut event_names = BTreeSet::new();
     for state in &all_states {
         for transition in &state.transitions {
+            if transition.delay_ms.is_some() {
+                continue;
+            }
             event_names.insert(transition.event.clone());
         }
     }
@@ -110,6 +113,9 @@ fn generate_machine_impl(machine: &Machine) -> Result<TokenStream, CodegenError>
     for state in &all_states {
         let state_variant = format_ident!("{}", to_pascal_case(&state.name));
         for transition in &state.transitions {
+            if transition.delay_ms.is_some() {
+                continue;
+            }
             let event_variant = format_ident!("{}", to_pascal_case(&transition.event));
             let target = match &transition.target {
                 Some(target_name) => {
@@ -289,6 +295,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -306,6 +313,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -357,6 +365,7 @@ mod tests {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![
                     StateNode {
@@ -371,6 +380,7 @@ mod tests {
                             guard: None,
                             actions: vec![],
                             description: None,
+                            delay_ms: None,
                         }],
                         children: vec![],
                         node_type: StateType::Atomic,
@@ -532,6 +542,7 @@ mod tests {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -571,6 +582,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
@@ -588,6 +600,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,

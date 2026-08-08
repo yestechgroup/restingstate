@@ -1,3 +1,4 @@
+use xstate_core::clock::MockClock;
 use xstate_core::Interpreter;
 use xstate_core::StateValue;
 use xstate_ir::{
@@ -22,6 +23,7 @@ fn toggle_machine() -> Machine {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -39,6 +41,7 @@ fn toggle_machine() -> Machine {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -65,6 +68,7 @@ fn toggle_machine_basic_transitions() {
         &mut ctx,
         &no_guards,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(after_toggle, Some(StateValue::Atomic("active".into())));
 
@@ -74,6 +78,7 @@ fn toggle_machine_basic_transitions() {
         &mut ctx,
         &no_guards,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(
         after_toggle_again,
@@ -86,6 +91,7 @@ fn toggle_machine_basic_transitions() {
         &mut ctx,
         &no_guards,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(unknown, None);
 }
@@ -115,6 +121,7 @@ fn toggle_machine_with_count_context() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -132,6 +139,7 @@ fn toggle_machine_with_count_context() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -163,6 +171,7 @@ fn traffic_light_compound_state() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![
                     StateNode {
@@ -177,6 +186,7 @@ fn traffic_light_compound_state() {
                             guard: None,
                             actions: vec![],
                             description: None,
+                            delay_ms: None,
                         }],
                         children: vec![],
                         node_type: StateType::Atomic,
@@ -230,6 +240,7 @@ fn traffic_light_compound_state() {
         &mut ctx,
         &no_guards,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(after_timer, Some(StateValue::Atomic("green".into())));
 
@@ -239,6 +250,7 @@ fn traffic_light_compound_state() {
         &mut ctx,
         &no_guards,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(
         after_reset,
@@ -258,6 +270,7 @@ fn traffic_light_compound_state() {
         &mut ctx,
         &no_guards,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(from_final, None);
 
@@ -267,6 +280,7 @@ fn traffic_light_compound_state() {
         &mut ctx,
         &no_guards,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(from_final_timer, Some(StateValue::Atomic("green".into())));
 }
@@ -293,6 +307,7 @@ fn transition_with_guard() {
                         }),
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     },
                     Transition {
                         event: "SUBMIT".into(),
@@ -300,6 +315,7 @@ fn transition_with_guard() {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     },
                 ],
                 children: vec![],
@@ -342,6 +358,7 @@ fn transition_with_guard() {
         &mut ctx,
         &guard_true,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(result_true, Some(StateValue::Atomic("submitted".into())));
 
@@ -352,6 +369,7 @@ fn transition_with_guard() {
         &mut ctx,
         &guard_false,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(result_false, Some(StateValue::Atomic("error".into())));
 }
@@ -375,6 +393,7 @@ fn entry_exit_actions() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -392,6 +411,7 @@ fn entry_exit_actions() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -415,6 +435,7 @@ fn entry_exit_actions() {
         &mut ctx,
         &no_guards,
         &mut log_actions,
+        &MockClock::new(0),
     );
 
     assert_eq!(actions_log.len(), 2);
@@ -444,6 +465,7 @@ fn transition_actions_order() {
                         args: vec![],
                     }],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -478,6 +500,7 @@ fn transition_actions_order() {
         &mut ctx,
         &no_guards,
         &mut log_actions,
+        &MockClock::new(0),
     );
 
     assert_eq!(actions_log.len(), 3);
@@ -558,6 +581,7 @@ fn event_bubbling() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![StateNode {
                     name: "child1".into(),
@@ -606,6 +630,7 @@ fn event_bubbling() {
         &mut ctx,
         &no_guards,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(result, Some(StateValue::Atomic("other".into())));
 }
@@ -631,6 +656,7 @@ fn transition_with_no_target() {
                     args: vec![serde_json::json!("event")],
                 }],
                 description: None,
+                delay_ms: None,
             }],
             children: vec![],
             node_type: StateType::Atomic,
@@ -655,6 +681,7 @@ fn transition_with_no_target() {
         &mut ctx,
         &no_guards,
         &mut check_action,
+        &MockClock::new(0),
     );
     assert!(actions_called);
     assert_eq!(result, Some(StateValue::Atomic("idle".into())));
@@ -678,6 +705,7 @@ fn final_state_no_transitions() {
                 guard: None,
                 actions: vec![],
                 description: None,
+                delay_ms: None,
             }],
             children: vec![],
             node_type: StateType::Final,
@@ -696,6 +724,7 @@ fn final_state_no_transitions() {
         &mut ctx,
         &no_guards,
         &mut no_actions,
+        &MockClock::new(0),
     );
     assert_eq!(result, None);
 }

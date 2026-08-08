@@ -106,6 +106,7 @@ mod tests {
                 guard: None,
                 actions: vec![],
                 description: None,
+                delay_ms: None,
             }],
             children: vec![
                 StateNode {
@@ -120,6 +121,7 @@ mod tests {
                         guard: None,
                         actions: vec![],
                         description: None,
+                        delay_ms: None,
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,

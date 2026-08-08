@@ -1,0 +1,54 @@
+{
+  "machine_name": "afterTraffic",
+  "machine_ir": {
+    "id": "afterTraffic",
+    "initial": "green",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "green",
+        "type": "atomic",
+        "transitions": [
+          { "event": "", "target": "yellow", "delay_ms": 1000 }
+        ]
+      },
+      {
+        "name": "yellow",
+        "type": "atomic",
+        "transitions": [
+          { "event": "", "target": "red", "delay_ms": 1000 }
+        ]
+      },
+      { "name": "red", "type": "atomic", "transitions": [] }
+    ]
+  },
+  "machine_config": {
+    "id": "afterTraffic",
+    "initial": "green",
+    "context": {},
+    "states": {
+      "green": { "after": { "1000": "yellow" } },
+      "yellow": { "after": { "1000": "red" } },
+      "red": {}
+    }
+  },
+  "protocol": {
+    "initial": { "value": "green", "context": {} },
+    "events": [
+      { "type": "TICK" },
+      { "type": "TICK" }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": { "type": "TICK" },
+      "snapshot": { "value": "red", "context": {} }
+    },
+    {
+      "step": 1,
+      "event": { "type": "TICK" },
+      "snapshot": { "value": "red", "context": {} }
+    }
+  ]
+}

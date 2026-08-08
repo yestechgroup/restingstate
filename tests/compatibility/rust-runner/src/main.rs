@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::process;
 
-use xstate_core::Interpreter;
+use xstate_core::{Interpreter, MockClock};
 
 #[derive(Debug, serde::Deserialize)]
 #[allow(dead_code)]
@@ -82,6 +82,7 @@ fn main() {
     });
 
     let interpreter = Interpreter::new(test_vector.machine_ir);
+    let clock = MockClock::new(100000);
 
     let initial_state = interpreter.initial_state();
     let initial_context = interpreter.initial_context();
@@ -143,6 +144,7 @@ fn main() {
                 true
             },
             &mut |_, _, _| {},
+            &clock,
         );
 
         if let Some(s) = new_state {

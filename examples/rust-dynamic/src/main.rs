@@ -1,4 +1,5 @@
 use serde_json::json;
+use xstate_core::clock::MockClock;
 use xstate_core::Interpreter;
 use xstate_ir::{ContextField, ContextSchema, Machine, StateNode, StateType, Transition};
 
@@ -26,6 +27,7 @@ fn main() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -43,6 +45,7 @@ fn main() {
                     guard: None,
                     actions: vec![],
                     description: None,
+                    delay_ms: None,
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
@@ -68,6 +71,7 @@ fn main() {
             &mut ctx,
             &guards,
             &mut actions,
+            &MockClock::new(0),
         )
         .unwrap();
     println!("After TOGGLE: {:?}", new_state);
