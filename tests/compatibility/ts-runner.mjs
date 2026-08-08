@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { createMachine, createActor } from "xstate";
+import { createMachine, createActor, fromCallback } from "xstate";
 
 function collectGuardNames(config) {
   const names = new Set();
@@ -19,6 +19,27 @@ function collectGuardNames(config) {
       for (const t of items) {
         if (typeof t === "object" && t !== null && typeof t.guard === "string") {
           names.add(t.guard);
+        }
+      }
+    }
+    if (node.states) {
+      for (const child of Object.values(node.states)) {
+        walk(child);
+      }
+    }
+  }
+  walk(config);
+  return names;
+}
+
+function collectInvokeSrcNames(config) {
+  const names = new Set();
+  function walk(node) {
+    if (node.invoke) {
+      const sources = Array.isArray(node.invoke) ? node.invoke : [node.invoke];
+      for (const inv of sources) {
+        if (typeof inv.src === "string") {
+          names.add(inv.src);
         }
       }
     }
@@ -145,6 +166,19 @@ function irToXstateConfig(ir) {
       if (state.initial) {
         result.initial = state.initial;
       }
+    }
+
+    if (state.invoke) {
+      result.invoke = {
+        src: state.invoke.src,
+        id: state.invoke.id,
+        ...(state.invoke.on_done && state.invoke.on_done.length > 0
+          ? { onDone: state.invoke.on_done[0].target }
+          : {}),
+        ...(state.invoke.on_error && state.invoke.on_error.length > 0
+          ? { onError: state.invoke.on_error[0].target }
+          : {}),
+      };
     }
 
     return result;
@@ -282,8 +316,17 @@ for (const tv of testVectors) {
   const guardNames = collectGuardNames(config);
   const guardImpls = buildGuardImplementations(guardNames);
 
+  const invokeSrcNames = collectInvokeSrcNames(config);
+  const actorImpls = {};
+  for (const name of invokeSrcNames) {
+    actorImpls[name] = fromCallback(() => {
+      return () => {};
+    });
+  }
+
   const machine = createMachine(config, {
     guards: guardImpls,
+    actors: actorImpls,
   });
 
   const actor = createActor(machine);

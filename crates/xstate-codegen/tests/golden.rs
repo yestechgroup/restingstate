@@ -28,6 +28,7 @@ fn golden_simple_toggle() {
                 exit: vec![],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
             StateNode {
@@ -46,6 +47,7 @@ fn golden_simple_toggle() {
                 exit: vec![],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
         ],
@@ -123,6 +125,7 @@ fn golden_traffic_light() {
                 exit: vec![],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
             StateNode {
@@ -141,6 +144,7 @@ fn golden_traffic_light() {
                 exit: vec![],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
             StateNode {
@@ -159,6 +163,7 @@ fn golden_traffic_light() {
                 exit: vec![],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
         ],
@@ -232,6 +237,7 @@ fn golden_with_context() {
             exit: vec![],
             initial: None,
             tags: vec![],
+            invoke: None,
             description: None,
         }],
     };
@@ -286,6 +292,7 @@ fn golden_with_guards() {
                 exit: vec![],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
             StateNode {
@@ -297,6 +304,7 @@ fn golden_with_guards() {
                 exit: vec![],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
         ],
@@ -350,6 +358,7 @@ fn golden_with_entry_exit_actions() {
                 exit: vec!["logExit".into()],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
             StateNode {
@@ -361,6 +370,7 @@ fn golden_with_entry_exit_actions() {
                 exit: vec!["stopSpinner".into()],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
         ],
@@ -427,6 +437,7 @@ fn golden_excludes_delayed_transitions_from_event_enum() {
                 exit: vec![],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
             StateNode {
@@ -438,6 +449,7 @@ fn golden_excludes_delayed_transitions_from_event_enum() {
                 exit: vec![],
                 initial: None,
                 tags: vec![],
+                invoke: None,
                 description: None,
             },
         ],

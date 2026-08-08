@@ -141,7 +141,7 @@ The `xstate-parser` walks the OXC AST to extract `createMachine({...})` calls:
 | Always transitions | ✓ | 0.2 |
 | History states | ✓ | 0.2 |
 | Delayed transitions (after) | ✓ | 0.2 |
-| Invoked actors | ✗ | 0.2 |
+| Invoked actors | ✓ | 0.2 |
 | Spawned actors | ✗ | 0.3 |
 | Actor systems | ✗ | 0.3 |
 | Persistence (serialize/restore) | ✓ | 0.2 |
@@ -348,4 +348,4 @@ All 7 planned phases complete. 92 tests pass. 14/16 xstate.js compatibility vect
 
 ---
 
-*Last updated: Phase 0.2 (Persistence + Always transitions + History + Delayed transitions)*
+*Last updated: Phase 0.2 (all 4 targets: Persistence + Always + History + Delays + Invoke)*

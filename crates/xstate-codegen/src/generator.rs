@@ -300,6 +300,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 StateNode {
                     name: "active".into(),
@@ -318,6 +319,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         };
@@ -385,6 +387,7 @@ mod tests {
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
+                        invoke: None,
                     },
                     StateNode {
                         name: "stop".into(),
@@ -396,10 +399,12 @@ mod tests {
                         children: vec![],
                         node_type: StateType::Final,
                         tags: vec![],
+                        invoke: None,
                     },
                 ],
                 node_type: StateType::Compound,
                 tags: vec![],
+                invoke: None,
             }],
         };
 
@@ -432,6 +437,7 @@ mod tests {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             }],
         };
 
@@ -477,6 +483,7 @@ mod tests {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             }],
         };
 
@@ -517,6 +524,7 @@ mod tests {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             }],
         };
 
@@ -547,6 +555,7 @@ mod tests {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             }],
         };
 
@@ -587,6 +596,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 StateNode {
                     name: "active".into(),
@@ -605,6 +615,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         };

@@ -216,3 +216,19 @@ fn parse_after_machine() {
     let red = machine.states.iter().find(|s| s.name == "red").unwrap();
     assert!(red.transitions.is_empty());
 }
+
+#[test]
+fn parse_invoke_machine() {
+    let source = fixture!("invoke");
+    let machine = parse(&source).unwrap();
+    assert_eq!(machine.id, "invokeTest");
+
+    let loading = &machine.states[0];
+    assert!(loading.invoke.is_some());
+    assert_eq!(loading.invoke.as_ref().unwrap().src, "fetchData");
+    assert_eq!(
+        loading.invoke.as_ref().unwrap().id.as_deref(),
+        Some("loader")
+    );
+    assert!(!loading.invoke.as_ref().unwrap().on_done.is_empty());
+}

@@ -28,6 +28,7 @@ fn toggle_machine() -> Machine {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
             StateNode {
                 name: "active".into(),
@@ -46,6 +47,7 @@ fn toggle_machine() -> Machine {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
         ],
     }
@@ -126,6 +128,7 @@ fn toggle_machine_with_count_context() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
             StateNode {
                 name: "active".into(),
@@ -144,6 +147,7 @@ fn toggle_machine_with_count_context() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
         ],
     };
@@ -191,6 +195,7 @@ fn traffic_light_compound_state() {
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
+                        invoke: None,
                     },
                     StateNode {
                         name: "stop".into(),
@@ -202,10 +207,12 @@ fn traffic_light_compound_state() {
                         children: vec![],
                         node_type: StateType::Final,
                         tags: vec![],
+                        invoke: None,
                     },
                 ],
                 node_type: StateType::Compound,
                 tags: vec![],
+                invoke: None,
             },
             StateNode {
                 name: "green".into(),
@@ -217,6 +224,7 @@ fn traffic_light_compound_state() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
         ],
     };
@@ -321,6 +329,7 @@ fn transition_with_guard() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
             StateNode {
                 name: "submitted".into(),
@@ -332,6 +341,7 @@ fn transition_with_guard() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
             StateNode {
                 name: "error".into(),
@@ -343,6 +353,7 @@ fn transition_with_guard() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
         ],
     };
@@ -398,6 +409,7 @@ fn entry_exit_actions() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
             StateNode {
                 name: "active".into(),
@@ -416,6 +428,7 @@ fn entry_exit_actions() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
         ],
     };
@@ -470,6 +483,7 @@ fn transition_actions_order() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
             StateNode {
                 name: "active".into(),
@@ -481,6 +495,7 @@ fn transition_actions_order() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
         ],
     };
@@ -533,6 +548,7 @@ fn parallel_states_initial_value() {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 StateNode {
                     name: "rendering".into(),
@@ -544,10 +560,12 @@ fn parallel_states_initial_value() {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
             node_type: StateType::Parallel,
             tags: vec![],
+            invoke: None,
         }],
     };
     let interpreter = Interpreter::new(machine);
@@ -593,9 +611,11 @@ fn event_bubbling() {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 }],
                 node_type: StateType::Compound,
                 tags: vec![],
+                invoke: None,
             },
             StateNode {
                 name: "other".into(),
@@ -607,6 +627,7 @@ fn event_bubbling() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
         ],
     };
@@ -661,6 +682,7 @@ fn transition_with_no_target() {
             children: vec![],
             node_type: StateType::Atomic,
             tags: vec![],
+            invoke: None,
         }],
     };
     let interpreter = Interpreter::new(machine);
@@ -710,6 +732,7 @@ fn final_state_no_transitions() {
             children: vec![],
             node_type: StateType::Final,
             tags: vec![],
+            invoke: None,
         }],
     };
     let interpreter = Interpreter::new(machine);

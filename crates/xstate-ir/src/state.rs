@@ -3,6 +3,17 @@ use serde::{Deserialize, Serialize};
 use crate::transition::Transition;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InvokeConfig {
+    pub src: String,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub on_done: Vec<Transition>,
+    #[serde(default)]
+    pub on_error: Vec<Transition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StateNode {
     pub name: String,
     pub description: Option<String>,
@@ -20,6 +31,8 @@ pub struct StateNode {
     pub node_type: StateType,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub invoke: Option<InvokeConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -68,6 +81,7 @@ mod tests {
             children: vec![],
             node_type: StateType::Atomic,
             tags: vec![],
+            invoke: None,
         };
         let json = serde_json::to_string_pretty(&state).unwrap();
         let round_tripped: StateNode = serde_json::from_str(&json).unwrap();
@@ -86,6 +100,7 @@ mod tests {
             children: vec![],
             node_type: StateType::Atomic,
             tags: vec![],
+            invoke: None,
         };
         let json = serde_json::to_string_pretty(&state).unwrap();
         let round_tripped: StateNode = serde_json::from_str(&json).unwrap();
@@ -126,6 +141,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 StateNode {
                     name: "stop".into(),
@@ -137,10 +153,12 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
             node_type: StateType::Compound,
             tags: vec!["critical".into()],
+            invoke: None,
         };
         let json = serde_json::to_string_pretty(&red_state).unwrap();
         let round_tripped: StateNode = serde_json::from_str(&json).unwrap();
@@ -167,6 +185,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 StateNode {
                     name: "rendering".into(),
@@ -178,10 +197,12 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
             node_type: StateType::Parallel,
             tags: vec![],
+            invoke: None,
         };
         let json = serde_json::to_string_pretty(&state).unwrap();
         let round_tripped: StateNode = serde_json::from_str(&json).unwrap();
@@ -200,6 +221,7 @@ mod tests {
             children: vec![],
             node_type: StateType::Final,
             tags: vec![],
+            invoke: None,
         };
         let json = serde_json::to_string_pretty(&state).unwrap();
         let round_tripped: StateNode = serde_json::from_str(&json).unwrap();
@@ -218,6 +240,7 @@ mod tests {
             children: vec![],
             node_type: StateType::History,
             tags: vec![],
+            invoke: None,
         };
         let json = serde_json::to_string_pretty(&state).unwrap();
         let round_tripped: StateNode = serde_json::from_str(&json).unwrap();
@@ -236,6 +259,78 @@ mod tests {
             children: vec![],
             node_type: StateType::DeepHistory,
             tags: vec![],
+            invoke: None,
+        };
+        let json = serde_json::to_string_pretty(&state).unwrap();
+        let round_tripped: StateNode = serde_json::from_str(&json).unwrap();
+        assert_eq!(state, round_tripped);
+    }
+
+    #[test]
+    fn invoke_config_round_trip() {
+        let config = InvokeConfig {
+            src: "fetchData".into(),
+            id: Some("loader".into()),
+            on_done: vec![Transition {
+                event: "done.invoke.loader".into(),
+                target: Some("loaded".into()),
+                guard: None,
+                actions: vec![],
+                description: None,
+                delay_ms: None,
+            }],
+            on_error: vec![Transition {
+                event: "error.platform.loader".into(),
+                target: Some("failed".into()),
+                guard: None,
+                actions: vec![],
+                description: None,
+                delay_ms: None,
+            }],
+        };
+        let json = serde_json::to_string_pretty(&config).unwrap();
+        let round_tripped: InvokeConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, round_tripped);
+    }
+
+    #[test]
+    fn invoke_config_without_id_round_trip() {
+        let config = InvokeConfig {
+            src: "fetchData".into(),
+            id: None,
+            on_done: vec![],
+            on_error: vec![],
+        };
+        let json = serde_json::to_string_pretty(&config).unwrap();
+        let round_tripped: InvokeConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, round_tripped);
+    }
+
+    #[test]
+    fn state_node_with_invoke_round_trip() {
+        let state = StateNode {
+            name: "loading".into(),
+            description: None,
+            initial: None,
+            entry: vec![],
+            exit: vec![],
+            transitions: vec![],
+            children: vec![],
+            node_type: StateType::Atomic,
+            tags: vec![],
+            invoke: Some(InvokeConfig {
+                src: "fetchData".into(),
+                id: Some("loader".into()),
+                on_done: vec![Transition {
+                    event: "done.invoke.loader".into(),
+                    target: Some("loaded".into()),
+                    guard: None,
+                    actions: vec![],
+                    description: None,
+                    delay_ms: None,
+                }],
+                on_error: vec![],
+            }),
         };
         let json = serde_json::to_string_pretty(&state).unwrap();
         let round_tripped: StateNode = serde_json::from_str(&json).unwrap();

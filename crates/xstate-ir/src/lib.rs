@@ -3,7 +3,7 @@ pub mod state;
 pub mod transition;
 
 pub use machine::{ContextField, ContextSchema, Machine};
-pub use state::{StateNode, StateType};
+pub use state::{InvokeConfig, StateNode, StateType};
 pub use transition::{Action, Guard, Transition};
 
 #[cfg(test)]
@@ -58,6 +58,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec!["initial".into()],
+                    invoke: None,
                 },
                 StateNode {
                     name: "processing".into(),
@@ -90,6 +91,7 @@ mod tests {
                             children: vec![],
                             node_type: StateType::Atomic,
                             tags: vec![],
+                            invoke: None,
                         },
                         StateNode {
                             name: "capture".into(),
@@ -108,10 +110,12 @@ mod tests {
                             children: vec![],
                             node_type: StateType::Atomic,
                             tags: vec![],
+                            invoke: None,
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
+                    invoke: None,
                 },
                 StateNode {
                     name: "done".into(),
@@ -123,6 +127,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Final,
                     tags: vec!["terminal".into()],
+                    invoke: None,
                 },
             ],
         };

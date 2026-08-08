@@ -7,7 +7,8 @@ use oxc_span::SourceType;
 
 use crate::error::ParseError;
 use xstate_ir::{
-    Action, ContextField, ContextSchema, Guard, Machine, StateNode, StateType, Transition,
+    Action, ContextField, ContextSchema, Guard, InvokeConfig, Machine, StateNode, StateType,
+    Transition,
 };
 
 pub fn parse(source: &str) -> Result<Machine, ParseError> {
@@ -471,6 +472,16 @@ fn extract_state_node(
         .transpose()?
         .unwrap_or_default();
 
+    let invoke = obj
+        .get_object_prop_value("invoke")
+        .map(|expr| match expr {
+            Expression::ObjectExpression(invoke_obj) => extract_invoke_config(invoke_obj),
+            _ => Err(ParseError::InvalidMachine(
+                "invoke must be an object".into(),
+            )),
+        })
+        .transpose()?;
+
     let tags = obj
         .get_object_prop_value("tags")
         .and_then(|expr| match expr {
@@ -493,6 +504,7 @@ fn extract_state_node(
         children,
         node_type,
         tags,
+        invoke,
     })
 }
 
@@ -667,6 +679,74 @@ fn extract_after_transitions(
     }
 
     Ok(transitions)
+}
+
+// ---------------------------------------------------------------------------
+// Invoke
+// ---------------------------------------------------------------------------
+
+fn extract_invoke_config(invoke_obj: &ObjectExpression) -> Result<InvokeConfig, ParseError> {
+    let src = extract_string_prop(invoke_obj, "src")
+        .ok_or_else(|| ParseError::InvalidMachine("invoke missing 'src'".into()))?;
+
+    let id = extract_string_prop(invoke_obj, "id");
+
+    let on_done = invoke_obj
+        .get_object_prop_value("onDone")
+        .map(|v| -> Result<Vec<Transition>, ParseError> {
+            match v {
+                Expression::StringLiteral(s) => Ok(vec![Transition {
+                    event: format!("done.invoke.{}", id.as_deref().unwrap_or(&src)),
+                    target: Some(s.value.to_string()),
+                    guard: None,
+                    actions: vec![],
+                    description: None,
+                    delay_ms: None,
+                }]),
+                Expression::ObjectExpression(obj) => {
+                    let t = extract_transition_from_obj(
+                        &format!("done.invoke.{}", id.as_deref().unwrap_or(&src)),
+                        obj,
+                    );
+                    Ok(vec![t])
+                }
+                _ => Err(ParseError::InvalidMachine("Invalid onDone value".into())),
+            }
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    let on_error = invoke_obj
+        .get_object_prop_value("onError")
+        .map(|v| -> Result<Vec<Transition>, ParseError> {
+            match v {
+                Expression::StringLiteral(s) => Ok(vec![Transition {
+                    event: format!("error.platform.{}", id.as_deref().unwrap_or(&src)),
+                    target: Some(s.value.to_string()),
+                    guard: None,
+                    actions: vec![],
+                    description: None,
+                    delay_ms: None,
+                }]),
+                Expression::ObjectExpression(obj) => {
+                    let t = extract_transition_from_obj(
+                        &format!("error.platform.{}", id.as_deref().unwrap_or(&src)),
+                        obj,
+                    );
+                    Ok(vec![t])
+                }
+                _ => Err(ParseError::InvalidMachine("Invalid onError value".into())),
+            }
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    Ok(InvokeConfig {
+        src,
+        id,
+        on_done,
+        on_error,
+    })
 }
 
 // ---------------------------------------------------------------------------

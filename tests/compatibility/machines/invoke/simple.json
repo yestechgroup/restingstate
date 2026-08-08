@@ -1,0 +1,54 @@
+{
+  "machine_name": "invokeSimple",
+  "machine_ir": {
+    "id": "invokeSimple",
+    "initial": "loading",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "loading",
+        "type": "atomic",
+        "transitions": [
+          { "event": "done.invoke.loader", "target": "loaded" },
+          { "event": "error.platform.loader", "target": "failed" }
+        ],
+        "invoke": {
+          "src": "fetchData",
+          "id": "loader",
+          "on_done": [],
+          "on_error": []
+        }
+      },
+      { "name": "loaded", "type": "atomic", "transitions": [] },
+      { "name": "failed", "type": "atomic", "transitions": [] }
+    ]
+  },
+  "machine_config": {
+    "id": "invokeSimple",
+    "initial": "loading",
+    "context": {},
+    "states": {
+      "loading": {
+        "on": {
+          "done.invoke.loader": "loaded",
+          "error.platform.loader": "failed"
+        }
+      },
+      "loaded": {},
+      "failed": {}
+    }
+  },
+  "protocol": {
+    "initial": { "value": "loading", "context": {} },
+    "events": [
+      { "type": "done.invoke.loader" }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": { "type": "done.invoke.loader" },
+      "snapshot": { "value": "loaded", "context": {} }
+    }
+  ]
+}

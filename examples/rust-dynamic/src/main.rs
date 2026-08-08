@@ -32,6 +32,7 @@ fn main() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
             StateNode {
                 name: "active".into(),
@@ -50,6 +51,7 @@ fn main() {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             },
         ],
     };

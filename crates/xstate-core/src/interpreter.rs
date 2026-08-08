@@ -816,7 +816,8 @@ mod tests {
     use super::*;
     use crate::clock::MockClock;
     use xstate_ir::{
-        Action, ContextField, ContextSchema, Guard, StateNode as IrStateNode, StateType, Transition,
+        Action, ContextField, ContextSchema, Guard, InvokeConfig, StateNode as IrStateNode,
+        StateType, Transition,
     };
 
     fn toggle_machine() -> Machine {
@@ -851,6 +852,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "active".into(),
@@ -872,6 +874,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         }
@@ -985,6 +988,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "processing".into(),
@@ -1014,6 +1018,7 @@ mod tests {
                             children: vec![],
                             node_type: StateType::Atomic,
                             tags: vec![],
+                            invoke: None,
                         },
                         IrStateNode {
                             name: "capture".into(),
@@ -1032,10 +1037,12 @@ mod tests {
                             children: vec![],
                             node_type: StateType::Atomic,
                             tags: vec![],
+                            invoke: None,
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "done".into(),
@@ -1047,6 +1054,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Final,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         }
@@ -1214,6 +1222,7 @@ mod tests {
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
+                invoke: None,
             }],
         };
 
@@ -1324,6 +1333,7 @@ mod tests {
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
+                        invoke: None,
                     },
                     IrStateNode {
                         name: "rendering".into(),
@@ -1342,6 +1352,7 @@ mod tests {
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
+                        invoke: None,
                     },
                     IrStateNode {
                         name: "loaded".into(),
@@ -1353,6 +1364,7 @@ mod tests {
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
+                        invoke: None,
                     },
                     IrStateNode {
                         name: "rendered".into(),
@@ -1364,10 +1376,12 @@ mod tests {
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
+                        invoke: None,
                     },
                 ],
                 node_type: StateType::Parallel,
                 tags: vec![],
+                invoke: None,
             }],
         }
     }
@@ -1402,12 +1416,15 @@ mod tests {
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
+                        invoke: None,
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
+                    invoke: None,
                 }],
                 node_type: StateType::Compound,
                 tags: vec![],
+                invoke: None,
             }],
         };
 
@@ -1452,6 +1469,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "end".into(),
@@ -1463,6 +1481,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         };
@@ -1524,9 +1543,11 @@ mod tests {
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
+                        invoke: None,
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "other".into(),
@@ -1538,6 +1559,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         };
@@ -1595,6 +1617,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "b".into(),
@@ -1606,6 +1629,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         };
@@ -1662,6 +1686,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "b".into(),
@@ -1680,6 +1705,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         };
@@ -1742,6 +1768,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "auto".into(),
@@ -1760,6 +1787,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "done".into(),
@@ -1771,6 +1799,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         };
@@ -1826,6 +1855,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "check".into(),
@@ -1846,6 +1876,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "done".into(),
@@ -1857,6 +1888,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         };
@@ -1959,6 +1991,7 @@ mod tests {
                             entry: vec![],
                             exit: vec![],
                             tags: vec![],
+                            invoke: None,
                             description: None,
                             initial: None,
                         },
@@ -1970,6 +2003,7 @@ mod tests {
                             entry: vec![],
                             exit: vec![],
                             tags: vec![],
+                            invoke: None,
                             description: None,
                             initial: None,
                         },
@@ -1981,12 +2015,14 @@ mod tests {
                             entry: vec![],
                             exit: vec![],
                             tags: vec![],
+                            invoke: None,
                             description: None,
                             initial: None,
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
+                    invoke: None,
                 },
                 IrStateNode {
                     name: "other".into(),
@@ -2005,6 +2041,7 @@ mod tests {
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
+                    invoke: None,
                 },
             ],
         };
@@ -2064,5 +2101,70 @@ mod tests {
                 child: Box::new(StateValue::Atomic("active".into())),
             }
         );
+    }
+
+    #[test]
+    fn invoke_done_transition_fires() {
+        let machine = Machine {
+            id: "invokeTest".into(),
+            initial: "loading".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                IrStateNode {
+                    name: "loading".into(),
+                    node_type: StateType::Atomic,
+                    transitions: vec![Transition {
+                        event: "done.invoke.loader".into(),
+                        target: Some("loaded".into()),
+                        delay_ms: None,
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                    }],
+                    invoke: Some(InvokeConfig {
+                        src: "fetchData".into(),
+                        id: Some("loader".into()),
+                        on_done: vec![],
+                        on_error: vec![],
+                    }),
+                    children: vec![],
+                    entry: vec![],
+                    exit: vec![],
+                    tags: vec![],
+                    description: None,
+                    initial: None,
+                },
+                IrStateNode {
+                    name: "loaded".into(),
+                    node_type: StateType::Atomic,
+                    transitions: vec![],
+                    invoke: None,
+                    children: vec![],
+                    entry: vec![],
+                    exit: vec![],
+                    tags: vec![],
+                    description: None,
+                    initial: None,
+                },
+            ],
+        };
+        let interpreter = Interpreter::new(machine);
+        let state = interpreter.initial_state();
+        let mut context = interpreter.initial_context();
+
+        assert_eq!(state, StateValue::Atomic("loading".into()));
+
+        let new_state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "done.invoke.loader"}),
+                &mut context,
+                &|_, _, _| true,
+                &mut |_, _, _| {},
+                &MockClock::new(0),
+            )
+            .unwrap();
+
+        assert_eq!(new_state, StateValue::Atomic("loaded".into()));
     }
 }
