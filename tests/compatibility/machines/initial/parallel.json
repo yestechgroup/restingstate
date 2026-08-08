@@ -1,0 +1,133 @@
+{
+  "machine_name": "deepParallel",
+  "machine_ir": {
+    "id": "deepParallel",
+    "initial": "one",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "one",
+        "type": "parallel",
+        "children": [
+          {
+            "name": "foo",
+            "type": "compound",
+            "initial": "a",
+            "children": [
+              {
+                "name": "a",
+                "type": "compound",
+                "initial": "b",
+                "children": [
+                  {
+                    "name": "b",
+                    "type": "compound",
+                    "initial": "c",
+                    "children": [
+                      {
+                        "name": "c",
+                        "type": "atomic"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "bar",
+            "type": "compound",
+            "initial": "a",
+            "children": [
+              {
+                "name": "a",
+                "type": "compound",
+                "initial": "b",
+                "children": [
+                  {
+                    "name": "b",
+                    "type": "compound",
+                    "initial": "c",
+                    "children": [
+                      {
+                        "name": "c",
+                        "type": "atomic"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "deepParallel",
+    "initial": "one",
+    "context": {},
+    "states": {
+      "one": {
+        "type": "parallel",
+        "states": {
+          "foo": {
+            "initial": "a",
+            "states": {
+              "a": {
+                "initial": "b",
+                "states": {
+                  "b": {
+                    "initial": "c",
+                    "states": {
+                      "c": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "bar": {
+            "initial": "a",
+            "states": {
+              "a": {
+                "initial": "b",
+                "states": {
+                  "b": {
+                    "initial": "c",
+                    "states": {
+                      "c": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": {
+        "one": {
+          "foo": {
+            "a": {
+              "b": "c"
+            }
+          },
+          "bar": {
+            "a": {
+              "b": "c"
+            }
+          }
+        }
+      },
+      "context": {}
+    },
+    "events": []
+  },
+  "expected": []
+}

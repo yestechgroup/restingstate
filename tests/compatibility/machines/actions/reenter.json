@@ -1,0 +1,73 @@
+{
+  "machine_name": "reenter",
+  "machine_ir": {
+    "id": "reenter",
+    "initial": "green",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "green",
+        "type": "atomic",
+        "entry": [
+          "enterGreen"
+        ],
+        "exit": [
+          "exitGreen"
+        ],
+        "transitions": [
+          {
+            "event": "RESTART",
+            "target": "green",
+            "reenter": true
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "reenter",
+    "initial": "green",
+    "context": {},
+    "states": {
+      "green": {
+        "entry": [
+          "enterGreen"
+        ],
+        "exit": [
+          "exitGreen"
+        ],
+        "on": {
+          "RESTART": {
+            "target": "green",
+            "reenter": true
+          }
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": "green",
+      "context": {}
+    },
+    "events": [
+      {
+        "type": "RESTART"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "RESTART"
+      },
+      "snapshot": {
+        "value": "green",
+        "context": {}
+      }
+    }
+  ]
+}

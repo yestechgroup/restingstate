@@ -1,0 +1,108 @@
+{
+  "machine_name": "form",
+  "machine_ir": {
+    "id": "form",
+    "initial": "editing",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "editing",
+        "type": "compound",
+        "initial": "empty",
+        "children": [
+          {
+            "name": "empty",
+            "type": "atomic",
+            "transitions": [
+              {
+                "event": "TYPE",
+                "target": "filled"
+              }
+            ]
+          },
+          {
+            "name": "filled",
+            "type": "atomic",
+            "transitions": [
+              {
+                "event": "SUBMIT",
+                "target": "submitted"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "submitted",
+        "type": "final"
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "form",
+    "initial": "editing",
+    "context": {},
+    "states": {
+      "editing": {
+        "initial": "empty",
+        "states": {
+          "empty": {
+            "on": {
+              "TYPE": "filled"
+            }
+          },
+          "filled": {
+            "on": {
+              "SUBMIT": "#form.submitted"
+            }
+          }
+        }
+      },
+      "submitted": {
+        "type": "final"
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": {
+        "editing": "empty"
+      },
+      "context": {}
+    },
+    "events": [
+      {
+        "type": "TYPE"
+      },
+      {
+        "type": "SUBMIT"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "TYPE"
+      },
+      "snapshot": {
+        "value": {
+          "editing": "filled"
+        },
+        "context": {}
+      }
+    },
+    {
+      "step": 1,
+      "event": {
+        "type": "SUBMIT"
+      },
+      "snapshot": {
+        "value": "submitted",
+        "context": {}
+      }
+    }
+  ]
+}

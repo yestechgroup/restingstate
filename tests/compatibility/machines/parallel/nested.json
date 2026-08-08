@@ -1,0 +1,162 @@
+{
+  "machine_name": "nested",
+  "machine_ir": {
+    "id": "nested",
+    "initial": "outer",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "outer",
+        "type": "compound",
+        "initial": "inner",
+        "children": [
+          {
+            "name": "inner",
+            "type": "parallel",
+            "children": [
+              {
+                "name": "a",
+                "type": "compound",
+                "initial": "a1",
+                "children": [
+                  {
+                    "name": "a1",
+                    "type": "atomic",
+                    "transitions": [
+                      {
+                        "event": "NEXT_A",
+                        "target": "a2"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "a2",
+                    "type": "atomic"
+                  }
+                ]
+              },
+              {
+                "name": "b",
+                "type": "compound",
+                "initial": "b1",
+                "children": [
+                  {
+                    "name": "b1",
+                    "type": "atomic",
+                    "transitions": [
+                      {
+                        "event": "NEXT_B",
+                        "target": "b2"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "b2",
+                    "type": "atomic"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "nested",
+    "initial": "outer",
+    "states": {
+      "outer": {
+        "initial": "inner",
+        "states": {
+          "inner": {
+            "type": "parallel",
+            "states": {
+              "a": {
+                "initial": "a1",
+                "states": {
+                  "a1": {
+                    "on": {
+                      "NEXT_A": "a2"
+                    }
+                  },
+                  "a2": {}
+                }
+              },
+              "b": {
+                "initial": "b1",
+                "states": {
+                  "b1": {
+                    "on": {
+                      "NEXT_B": "b2"
+                    }
+                  },
+                  "b2": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": {
+        "outer": {
+          "inner": {
+            "a": "a1",
+            "b": "b1"
+          }
+        }
+      },
+      "context": {}
+    },
+    "events": [
+      {
+        "type": "NEXT_A"
+      },
+      {
+        "type": "NEXT_B"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "NEXT_A"
+      },
+      "snapshot": {
+        "value": {
+          "outer": {
+            "inner": {
+              "a": "a2",
+              "b": "b1"
+            }
+          }
+        },
+        "context": {}
+      }
+    },
+    {
+      "step": 1,
+      "event": {
+        "type": "NEXT_B"
+      },
+      "snapshot": {
+        "value": {
+          "outer": {
+            "inner": {
+              "a": "a2",
+              "b": "b2"
+            }
+          }
+        },
+        "context": {}
+      }
+    }
+  ]
+}

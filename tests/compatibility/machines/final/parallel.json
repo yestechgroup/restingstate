@@ -1,0 +1,127 @@
+{
+  "machine_name": "parallelFinal",
+  "machine_ir": {
+    "id": "parallelFinal",
+    "initial": "root",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "root",
+        "type": "parallel",
+        "children": [
+          {
+            "name": "a",
+            "type": "compound",
+            "initial": "idle",
+            "children": [
+              {
+                "name": "idle",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "NEXT",
+                    "target": "done"
+                  }
+                ]
+              },
+              {
+                "name": "done",
+                "type": "final"
+              }
+            ]
+          },
+          {
+            "name": "b",
+            "type": "compound",
+            "initial": "idle",
+            "children": [
+              {
+                "name": "idle",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "NEXT",
+                    "target": "done"
+                  }
+                ]
+              },
+              {
+                "name": "done",
+                "type": "final"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "parallelFinal",
+    "initial": "root",
+    "context": {},
+    "states": {
+      "root": {
+        "type": "parallel",
+        "states": {
+          "a": {
+            "initial": "idle",
+            "states": {
+              "idle": {
+                "on": {
+                  "NEXT": "done"
+                }
+              },
+              "done": {
+                "type": "final"
+              }
+            }
+          },
+          "b": {
+            "initial": "idle",
+            "states": {
+              "idle": {
+                "on": {
+                  "NEXT": "done"
+                }
+              },
+              "done": {
+                "type": "final"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": {
+        "a": "idle",
+        "b": "idle"
+      },
+      "context": {}
+    },
+    "events": [
+      {
+        "type": "NEXT"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "NEXT"
+      },
+      "snapshot": {
+        "value": {
+          "a": "done",
+          "b": "done"
+        },
+        "context": {}
+      }
+    }
+  ]
+}

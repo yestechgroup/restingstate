@@ -1,0 +1,17 @@
+[package]
+name = "xstate-napi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["async"] }
+napi-derive = "2"
+xstate-core = { path = "../xstate-core" }
+
+[build-dependencies]
+napi-build = "2"

@@ -1,0 +1,28 @@
+{
+  "name": "restingstate",
+  "version": "1.0.0",
+  "description": "## 1. Project Overview & Objectives",
+  "main": "index.js",
+  "directories": {
+    "example": "examples",
+    "test": "tests"
+  },
+  "scripts": {
+    "ts-runner": "node tests/compatibility/ts-runner.mjs",
+    "compare": "node tests/compatibility/compare.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yestechgroup/restingstate.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/yestechgroup/restingstate/issues"
+  },
+  "homepage": "https://github.com/yestechgroup/restingstate#readme",
+  "dependencies": {
+    "xstate": "^5.32.5"
+  }
+}

@@ -1,0 +1,3 @@
+[submodule "tests/compatibility/xstate-vendor"]
+	path = tests/compatibility/xstate-vendor
+	url = https://github.com/statelyai/xstate.git

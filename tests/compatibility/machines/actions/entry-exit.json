@@ -1,0 +1,88 @@
+{
+  "machine_name": "entry-exit",
+  "machine_ir": {
+    "id": "actions",
+    "initial": "green",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "green",
+        "type": "atomic",
+        "entry": [
+          "enterGreen"
+        ],
+        "exit": [
+          "exitGreen"
+        ],
+        "transitions": [
+          {
+            "event": "TIMER",
+            "target": "yellow"
+          }
+        ]
+      },
+      {
+        "name": "yellow",
+        "type": "atomic",
+        "entry": [
+          "enterYellow"
+        ],
+        "exit": [
+          "exitYellow"
+        ],
+        "transitions": []
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "actions",
+    "initial": "green",
+    "context": {},
+    "states": {
+      "green": {
+        "entry": [
+          "enterGreen"
+        ],
+        "exit": [
+          "exitGreen"
+        ],
+        "on": {
+          "TIMER": "yellow"
+        }
+      },
+      "yellow": {
+        "entry": [
+          "enterYellow"
+        ],
+        "exit": [
+          "exitYellow"
+        ]
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": "green",
+      "context": {}
+    },
+    "events": [
+      {
+        "type": "TIMER"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "TIMER"
+      },
+      "snapshot": {
+        "value": "yellow",
+        "context": {}
+      }
+    }
+  ]
+}

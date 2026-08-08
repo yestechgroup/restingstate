@@ -1,0 +1,60 @@
+{
+  "machine_name": "deep",
+  "machine_ir": {
+    "id": "deep",
+    "initial": "a",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "a",
+        "type": "compound",
+        "initial": "b",
+        "children": [
+          {
+            "name": "b",
+            "type": "compound",
+            "initial": "c",
+            "children": [
+              {
+                "name": "c",
+                "type": "atomic"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "deep",
+    "initial": "a",
+    "context": {},
+    "states": {
+      "a": {
+        "initial": "b",
+        "states": {
+          "b": {
+            "initial": "c",
+            "states": {
+              "c": {}
+            }
+          }
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": {
+        "a": {
+          "b": "c"
+        }
+      },
+      "context": {}
+    },
+    "events": []
+  },
+  "expected": []
+}

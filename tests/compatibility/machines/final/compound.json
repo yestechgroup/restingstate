@@ -1,0 +1,107 @@
+{
+  "machine_name": "compoundFinal",
+  "machine_ir": {
+    "id": "compoundFinal",
+    "initial": "parent",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "parent",
+        "type": "compound",
+        "initial": "active",
+        "children": [
+          {
+            "name": "active",
+            "type": "atomic",
+            "transitions": [
+              {
+                "event": "FINISH",
+                "target": "done"
+              }
+            ]
+          },
+          {
+            "name": "done",
+            "type": "final"
+          }
+        ],
+        "transitions": [
+          {
+            "event": "TIMER",
+            "target": "sibling"
+          }
+        ]
+      },
+      {
+        "name": "sibling",
+        "type": "atomic"
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "compoundFinal",
+    "initial": "parent",
+    "context": {},
+    "states": {
+      "parent": {
+        "initial": "active",
+        "states": {
+          "active": {
+            "on": {
+              "FINISH": "done"
+            }
+          },
+          "done": {
+            "type": "final"
+          }
+        },
+        "on": {
+          "TIMER": "sibling"
+        }
+      },
+      "sibling": {}
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": {
+        "parent": "active"
+      },
+      "context": {}
+    },
+    "events": [
+      {
+        "type": "FINISH"
+      },
+      {
+        "type": "TIMER"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "FINISH"
+      },
+      "snapshot": {
+        "value": {
+          "parent": "done"
+        },
+        "context": {}
+      }
+    },
+    {
+      "step": 1,
+      "event": {
+        "type": "TIMER"
+      },
+      "snapshot": {
+        "value": "sibling",
+        "context": {}
+      }
+    }
+  ]
+}

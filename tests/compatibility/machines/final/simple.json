@@ -1,0 +1,64 @@
+{
+  "machine_name": "simpleFinal",
+  "machine_ir": {
+    "id": "simpleFinal",
+    "initial": "start",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "start",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "NEXT",
+            "target": "end"
+          }
+        ]
+      },
+      {
+        "name": "end",
+        "type": "final"
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "simpleFinal",
+    "initial": "start",
+    "context": {},
+    "states": {
+      "start": {
+        "on": {
+          "NEXT": "end"
+        }
+      },
+      "end": {
+        "type": "final"
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": "start",
+      "context": {}
+    },
+    "events": [
+      {
+        "type": "NEXT"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "NEXT"
+      },
+      "snapshot": {
+        "value": "end",
+        "context": {}
+      }
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "machine_name": "flat",
+  "machine_ir": {
+    "id": "flat",
+    "initial": "root",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "root",
+        "type": "parallel",
+        "children": [
+          {
+            "name": "foo",
+            "type": "atomic"
+          },
+          {
+            "name": "bar",
+            "type": "atomic"
+          },
+          {
+            "name": "baz",
+            "type": "compound",
+            "initial": "one",
+            "children": [
+              {
+                "name": "one",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "E",
+                    "target": "two"
+                  }
+                ]
+              },
+              {
+                "name": "two",
+                "type": "atomic"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "flat",
+    "type": "parallel",
+    "states": {
+      "foo": {},
+      "bar": {},
+      "baz": {
+        "initial": "one",
+        "states": {
+          "one": {
+            "on": {
+              "E": "two"
+            }
+          },
+          "two": {}
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": {
+        "foo": "foo",
+        "bar": "bar",
+        "baz": "one"
+      },
+      "context": {}
+    },
+    "events": [
+      {
+        "type": "E"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "E"
+      },
+      "snapshot": {
+        "value": {
+          "foo": "foo",
+          "bar": "bar",
+          "baz": "two"
+        },
+        "context": {}
+      }
+    }
+  ]
+}

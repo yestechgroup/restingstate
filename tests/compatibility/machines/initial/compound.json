@@ -1,0 +1,46 @@
+{
+  "machine_name": "parent",
+  "machine_ir": {
+    "id": "parent",
+    "initial": "parent",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "parent",
+        "type": "compound",
+        "initial": "child",
+        "children": [
+          {
+            "name": "child",
+            "type": "atomic"
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "parent",
+    "initial": "parent",
+    "context": {},
+    "states": {
+      "parent": {
+        "initial": "child",
+        "states": {
+          "child": {}
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": {
+        "parent": "child"
+      },
+      "context": {}
+    },
+    "events": []
+  },
+  "expected": []
+}

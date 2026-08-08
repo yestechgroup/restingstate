@@ -1,0 +1,122 @@
+{
+  "machine_name": "nested-actions",
+  "machine_ir": {
+    "id": "nestedActions",
+    "initial": "green",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "green",
+        "type": "compound",
+        "initial": "walk",
+        "transitions": [
+          {
+            "event": "TIMER",
+            "target": "yellow"
+          }
+        ],
+        "children": [
+          {
+            "name": "walk",
+            "type": "atomic",
+            "transitions": [
+              {
+                "event": "PED_COUNTDOWN",
+                "target": "wait"
+              }
+            ]
+          },
+          {
+            "name": "wait",
+            "type": "atomic",
+            "transitions": []
+          }
+        ]
+      },
+      {
+        "name": "yellow",
+        "type": "compound",
+        "initial": "speed_up",
+        "transitions": [],
+        "children": [
+          {
+            "name": "speed_up",
+            "type": "atomic",
+            "transitions": []
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "nestedActions",
+    "initial": "green",
+    "context": {},
+    "states": {
+      "green": {
+        "initial": "walk",
+        "states": {
+          "walk": {
+            "on": {
+              "PED_COUNTDOWN": "wait"
+            }
+          },
+          "wait": {}
+        },
+        "on": {
+          "TIMER": "yellow"
+        }
+      },
+      "yellow": {
+        "initial": "speed_up",
+        "states": {
+          "speed_up": {}
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": {
+        "green": "walk"
+      },
+      "context": {}
+    },
+    "events": [
+      {
+        "type": "PED_COUNTDOWN"
+      },
+      {
+        "type": "TIMER"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": {
+        "type": "PED_COUNTDOWN"
+      },
+      "snapshot": {
+        "value": {
+          "green": "wait"
+        },
+        "context": {}
+      }
+    },
+    {
+      "step": 1,
+      "event": {
+        "type": "TIMER"
+      },
+      "snapshot": {
+        "value": {
+          "yellow": "speed_up"
+        },
+        "context": {}
+      }
+    }
+  ]
+}

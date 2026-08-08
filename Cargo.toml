@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/xstate-core",
+    "crates/xstate-ir",
+    "crates/xstate-parser",
+    "crates/xstate-codegen",
+    "crates/xstate-macro",
+    "crates/xstate-napi",
+    "tests/compatibility/rust-runner",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/anomalyco/restingstate"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+proc-macro2 = "1"
+oxc_parser = "0.77"
+oxc_allocator = "0.77"
+oxc_span = "0.77"
+oxc_ast = "0.77"
+thiserror = "2"
+petgraph = "0.7"
+proc-macro-error2 = "2"
+miette = "7"

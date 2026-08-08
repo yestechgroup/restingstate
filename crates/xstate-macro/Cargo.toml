@@ -1,0 +1,18 @@
+[package]
+name = "xstate-macro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+xstate-ir = { path = "../xstate-ir" }
+xstate-parser = { path = "../xstate-parser" }
+xstate-codegen = { path = "../xstate-codegen" }
+syn.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+proc-macro-error2.workspace = true

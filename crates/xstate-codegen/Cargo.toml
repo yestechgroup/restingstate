@@ -1,0 +1,13 @@
+[package]
+name = "xstate-codegen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+xstate-ir = { path = "../xstate-ir" }
+quote.workspace = true
+syn.workspace = true
+proc-macro2.workspace = true
+thiserror.workspace = true
