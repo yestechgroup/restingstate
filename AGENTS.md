@@ -299,4 +299,40 @@ let new_state = machine.transition(&state, &Event::Submit, &mut ctx);
 
 ---
 
-*Last updated: Phase 6 (Proc macro)*
+## NAPI-RS Bindings
+
+### JsMachine API
+
+The `xstate-napi` crate exposes native Node.js bindings via NAPI-RS:
+
+```typescript
+// Node.js usage (via .node addon)
+const { JsMachine } = require('xstate-napi');
+
+const machine = new JsMachine(machineJson);
+// Returns { value, context }
+machine.send({ type: 'TOGGLE' });    // Returns new snapshot or null
+```
+
+### API Reference
+
+| Method | Input | Output |
+|--------|-------|--------|
+| `new JsMachine(json)` | JSON string of xstate-ir Machine | Machine instance |
+| `JsMachine.fromIr(json, ctx)` | JSON string, initial context | Machine instance with custom context |
+| `.snapshot()` | — | `{ value, context }` |
+| `.send(event)` | `{ type: string }` | `{ value, context }` or null |
+
+### WASM Target
+
+The same crate supports a `wasm32-unknown-unknown` build target for WebAssembly deployment:
+
+```bash
+cargo build -p xstate-napi --target wasm32-unknown-unknown
+```
+
+This enables running XState machines in the browser via WASM, with JSON serialization for state transfer.
+
+---
+
+*Last updated: Phase 7 (NAPI-RS bindings)*
