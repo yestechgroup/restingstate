@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>restingstate WASM Demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+  .machine { border: 2px solid #333; border-radius: 8px; padding: 1.5rem; }
+  .state { font-size: 2rem; font-weight: bold; margin: 1rem 0; }
+  .state.active { color: #22c55e; }
+  .state.inactive { color: #6b7280; }
+  button { padding: 0.5rem 1.5rem; font-size: 1.1rem; cursor: pointer; }
+  .context { font-family: monospace; background: #f3f4f6; padding: 0.5rem; border-radius: 4px; }
+  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 1rem; margin: 1rem 0; }
+  .code { background: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<h1>restingstate — Browser (WASM)</h1>
+
+<div class="note">
+  <strong>Note:</strong> WASM bindings are planned but not yet implemented.
+  This page shows the expected API. Once <code>wasm-bindgen</code> support is added,
+  the code in this page will work.
+</div>
+
+<h2>Toggle Machine Demo</h2>
+<div class="machine">
+  <div class="state inactive" id="state-display">inactive</div>
+  <button id="toggle-btn">TOGGLE</button>
+  <p class="context" id="context-display">Context: {"count": 0}</p>
+</div>
+
+<p>Events sent: <span id="event-count">0</span></p>
+
+<h2>How it works</h2>
+<p>When WASM bindings are available, the JavaScript API matches the NAPI-RS API:</p>
+
+<pre class="code"><code>// Load WASM module
+const wasm = await loadWasm('xstate_napi.wasm');
+
+// Create machine from IR JSON
+const machine = new wasm.JsMachine(machineIrJson);
+
+// Get current snapshot
+const snap = JSON.parse(machine.snapshot());
+console.log(snap.value, snap.context);
+
+// Send events
+const result = machine.send(JSON.stringify({ type: 'TOGGLE' }));
+if (result) {
+  const newSnap = JSON.parse(result);
+  console.log(newSnap.value); // 'active'
+}</code></pre>
+
+<h2>Build Instructions</h2>
+<pre class="code"><code># Build for WASM (requires wasm-bindgen — planned)
+cargo build -p xstate-napi --target wasm32-unknown-unknown
+
+# Package for web
+wasm-pack build crates/xstate-napi --target web
+
+# Serve
+npx serve examples/js-wasm</code></pre>
+
+</body>
+</html>

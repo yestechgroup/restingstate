@@ -9,6 +9,8 @@ members = [
     "crates/xstate-macro-test",
     "crates/xstate-napi",
     "tests/compatibility/rust-runner",
+    "examples/rust-token-bucket",
+    "examples/rust-dynamic",
 ]
 
 [workspace.package]

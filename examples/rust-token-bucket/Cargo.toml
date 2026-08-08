@@ -1,0 +1,10 @@
+[package]
+name = "rust-token-bucket"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+xstate-macro = { path = "../../crates/xstate-macro" }
+xstate-core = { path = "../../crates/xstate-core" }
+serde = { version = "1", features = ["derive"] }
