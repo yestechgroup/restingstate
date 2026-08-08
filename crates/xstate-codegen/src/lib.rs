@@ -1,4 +1,4 @@
-pub mod codegen;
 pub mod error;
+pub mod generator;
 
-pub use codegen::generate;
+pub use generator::generate;

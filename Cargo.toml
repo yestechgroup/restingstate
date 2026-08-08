@@ -6,6 +6,7 @@ members = [
     "crates/xstate-parser",
     "crates/xstate-codegen",
     "crates/xstate-macro",
+    "crates/xstate-macro-test",
     "crates/xstate-napi",
     "tests/compatibility/rust-runner",
 ]

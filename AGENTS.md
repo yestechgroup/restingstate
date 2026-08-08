@@ -61,6 +61,7 @@ xstate-core            — Pure Rust runtime (no TS/JS dependency)
 - Generated code uses `quote` + `syn`; golden-file tests assert exact output
 - Runtime traits: `Machine` has associated types `State`, `Event`, `Context`
 - Actions and guards are trait-based boundaries — the generated code stores identifiers, the application supplies implementation
+- Generated code uses `quote` + `syn`; golden-file tests assert exact output
 - All IR types are tested with round-trip JSON serialization (`serde_json`)
 
 ---
@@ -77,6 +78,7 @@ xstate-core            — Pure Rust runtime (no TS/JS dependency)
 - `initial` for compound state children
 - `setup({}).createMachine({})` chained calls
 - `tags` and `description` metadata
+- `xstate!("path/to/machine.ts")` proc macro invocation
 
 ---
 
@@ -227,4 +229,74 @@ The xstate.js source is vendored as a git submodule at `tests/compatibility/xsta
 
 ---
 
-*Last updated: Phase 5 (xstate.js test integration + runners)*
+## Code Generation
+
+### Generated Code Structure
+
+The `xstate-codegen` crate takes an `xstate_ir::Machine` and generates a Rust module containing:
+
+1. **State enum** — one variant per state node (PascalCase)
+2. **Event enum** — one variant per unique event name (PascalCase)  
+3. **Context struct** — typed fields from ContextSchema
+4. **Machine struct** — empty unit struct
+5. **impl Machine** — trait impl with match-based transition function
+
+### Example: Toggle Machine
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum State { Inactive, Active }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Event { Toggle }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Context { pub count: i64 }
+
+pub struct MachineImpl;
+
+impl Machine for MachineImpl {
+    type State = State;
+    type Event = Event;
+    type Context = Context;
+    
+    fn transition(&self, state: &State, event: &Event, _context: &mut Context) -> State {
+        match (state, event) {
+            (State::Inactive, Event::Toggle) => State::Active,
+            (State::Active, Event::Toggle) => State::Inactive,
+            _ => state.clone(),
+        }
+    }
+}
+```
+
+### Testing
+
+- Golden-file tests assert exact generated output for known IR inputs
+- Compile tests verify generated code compiles and runs correctly against xstate-core
+
+---
+
+## Proc Macro Usage
+
+```
+use xstate_macro::xstate;
+
+xstate!("machines/payment.ts");
+
+// This generates:
+// - pub enum State { ... }        // All state variants
+// - pub enum Event { ... }        // All event variants  
+// - pub struct Context { ... }    // Typed context fields
+// - pub struct MachineImpl;       // Unit struct
+// - impl Machine for MachineImpl; // Full trait implementation
+
+let machine = MachineImpl;
+let state = machine.initial_state();
+let mut ctx = machine.initial_context();
+let new_state = machine.transition(&state, &Event::Submit, &mut ctx);
+```
+
+---
+
+*Last updated: Phase 6 (Proc macro)*

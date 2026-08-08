@@ -753,6 +753,8 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
+ "serde",
+ "serde_json",
  "syn 2.0.119",
  "thiserror",
  "xstate-ir",
@@ -786,6 +788,15 @@ dependencies = [
  "xstate-codegen",
  "xstate-ir",
  "xstate-parser",
+]
+
+[[package]]
+name = "xstate-macro-test"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "xstate-core",
+ "xstate-macro",
 ]
 
 [[package]]

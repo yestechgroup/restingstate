@@ -1,0 +1,13 @@
+[package]
+name = "xstate-macro-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+xstate-macro = { path = "../xstate-macro" }
+xstate-core = { path = "../xstate-core" }
+serde = { version = "1", features = ["derive"] }
