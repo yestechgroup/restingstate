@@ -145,6 +145,7 @@ The `xstate-parser` walks the OXC AST to extract `createMachine({...})` calls:
 | Spawned actors | ✗ | 0.3 |
 | Actor systems | ✗ | 0.3 |
 | Persistence (serialize/restore) | ✗ | 0.2 |
+| **TOTAL (0.1 targets)** | **8/9** | **0.1** |
 
 ---
 
@@ -196,8 +197,11 @@ for each test vector:
 Test vectors live in `tests/compatibility/machines/` organized by category:
 - `simple/` — atomic state machines (toggle, traffic-light)
 - `compound/` — nested/compound state machines (form)
-- `guards/` — machines with guarded transitions
-- (more categories added as features are implemented)
+- `guards/` — machines with guarded transitions (auth)
+- `parallel/` — parallel states (word, flat, nested)
+- `final/` — final states (simple, compound, parallel)
+- `initial/` — initial state resolution (deep, parallel, compound)
+- `actions/` — entry/exit/transition actions (entry-exit, nested, reenter)
 
 ### Runners
 
@@ -335,4 +339,10 @@ This enables running XState machines in the browser via WASM, with JSON serializ
 
 ---
 
-*Last updated: Phase 7 (NAPI-RS bindings)*
+## Project Status
+
+All 7 planned phases complete. 92 tests pass. 14/16 xstate.js compatibility vectors pass (88%).
+
+---
+
+*Last updated: Phase 7 (NAPI-RS bindings) — all 7 planned phases complete*
