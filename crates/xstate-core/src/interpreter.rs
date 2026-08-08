@@ -73,6 +73,10 @@ impl Interpreter {
         }
     }
 
+    pub fn machine(&self) -> &Machine {
+        &self.machine
+    }
+
     pub fn initial_state(&self) -> StateValue {
         let initial_name = &self.machine.initial;
         let node = self.find_root_state(initial_name).unwrap_or_else(|| {
