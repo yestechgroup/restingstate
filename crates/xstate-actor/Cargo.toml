@@ -1,0 +1,17 @@
+[package]
+name = "xstate-actor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+xstate-core = { path = "../xstate-core" }
+xstate-ir = { path = "../xstate-ir" }
+tokio = { version = "1", features = ["sync", "rt", "macros", "time"] }
+serde_json.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
