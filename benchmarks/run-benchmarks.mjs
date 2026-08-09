@@ -5,17 +5,12 @@ import {
   assign,
 } from 'xstate';
 import { performance } from 'perf_hooks';
-import {
-  readFileSync,
-  writeFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  unlinkSync,
-} from 'fs';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { execSync, execFileSync } from 'child_process';
 import os from 'os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -220,89 +215,65 @@ function benchXstateJs(machineConfig, events) {
   return results;
 }
 
-function buildRustRunner() {
-  console.log(`  Building rust-runner (release)...`);
-  const buildStart = performance.now();
-  execSync('cargo build --release -p rust-runner', {
-    cwd: PROJECT_ROOT,
-    encoding: 'utf-8',
-    stdio: 'pipe',
-    timeout: 300_000,
-  });
-  const buildEnd = performance.now();
-  console.log(
-    `  Build complete (${((buildEnd - buildStart) / 1000).toFixed(1)}s)`
-  );
+function loadWasmModule() {
+  const wasmPkg = join(__dirname, 'wasm-pkg', 'xstate_wasm.cjs');
+  if (!existsSync(wasmPkg)) {
+    console.error(
+      'WASM package not found. Build with:',
+      'cargo build -p xstate-wasm --target wasm32-unknown-unknown --release &&',
+      'wasm-bindgen --target nodejs --out-dir benchmarks/wasm-pkg target/wasm32-unknown-unknown/release/xstate_wasm.wasm'
+    );
+    return null;
+  }
+  const mod = require(wasmPkg);
+  mod.init();
+  return mod;
 }
 
-function benchRustRunner(machineIr, events) {
-  const rustBinary = join(PROJECT_ROOT, 'target', 'release', 'rust-runner');
-  if (!existsSync(rustBinary)) {
-    console.log(`  Rust runner binary not found, building...`);
-    buildRustRunner();
-  }
+const WASM_MEASURED = 100_000;
 
-  const wasmMeasured = 10_000;
-  const results = [];
-  const tmpInput = join(RESULTS_DIR, '_bench_input.json');
-
-  for (let trial = 0; trial < TRIALS; trial++) {
-    try {
-      const benchEvents = [];
-      for (let i = 0; i < wasmMeasured; i++) {
-        benchEvents.push(events[i % events.length]);
-      }
-
-      const initialCtx = {};
-      if (machineIr.context && machineIr.context.fields) {
-        for (const f of machineIr.context.fields) {
-          initialCtx[f.name] = f.default_value;
-        }
-      }
-
-      writeFileSync(
-        tmpInput,
-        JSON.stringify({
-          machine_name: machineIr.id || 'bench',
-          machine_ir: machineIr,
-          protocol: {
-            initial: {
-              value: null,
-              context: initialCtx,
-            },
-            events: benchEvents,
-          },
-        })
-      );
-
-      const benchStart = performance.now();
-      execFileSync(rustBinary, [tmpInput], {
-        cwd: PROJECT_ROOT,
-        encoding: 'utf-8',
-        maxBuffer: 200 * 1024 * 1024,
-        timeout: 120_000,
-        stdio: 'pipe',
-      });
-      const benchEnd = performance.now();
-
-      results.push({
-        startup_ms: 0,
-        total_ms: benchEnd - benchStart,
-        throughput_eps: Math.round(
-          wasmMeasured / ((benchEnd - benchStart) / 1000)
-        ),
-        snapshot_bytes: 0,
-      });
-    } catch (e) {
-      console.error(`  Trial ${trial + 1} failed: ${e.message}`);
+function benchWasmDirect(wasmMod, machineIr, events) {
+  const initialCtx = {};
+  if (machineIr.context && machineIr.context.fields) {
+    for (const f of machineIr.context.fields) {
+      initialCtx[f.name] = f.default_value;
     }
   }
 
-  try { unlinkSync(tmpInput); } catch {}
+  const machineJson = JSON.stringify(machineIr);
+  const results = [];
+
+  for (let trial = 0; trial < TRIALS; trial++) {
+    const benchEvents = [];
+    for (let i = 0; i < WASM_MEASURED; i++) {
+      benchEvents.push(events[i % events.length]);
+    }
+
+    const startStart = performance.now();
+    const m = new wasmMod.JsMachine(machineJson);
+    const startEnd = performance.now();
+
+    const benchStart = performance.now();
+    for (let i = 0; i < WASM_MEASURED; i++) {
+      m.send(JSON.stringify(benchEvents[i]));
+    }
+    const benchEnd = performance.now();
+
+    const snap = JSON.parse(m.snapshot());
+    results.push({
+      startup_ms: startEnd - startStart,
+      total_ms: benchEnd - benchStart,
+      throughput_eps: Math.round(
+        WASM_MEASURED / ((benchEnd - benchStart) / 1000)
+      ),
+      snapshot_bytes: JSON.stringify(snap).length,
+    });
+  }
+
   return results;
 }
 
-function benchmarkWorkload(name) {
+function benchmarkWorkload(name, wasmMod) {
   console.log(`\nBenchmarking: ${name}`);
   const workload = loadWorkload(name);
   const events = workload.events;
@@ -316,7 +287,7 @@ function benchmarkWorkload(name) {
   );
 
   console.log(`  xstate-wasm: ${TRIALS} trials...`);
-  const wasmResults = benchRustRunner(workload.machine_ir, events);
+  const wasmResults = benchWasmDirect(wasmMod, workload.machine_ir, events);
   const wasmAgg = wasmResults.length > 0 ? aggregate(wasmResults) : null;
 
   if (wasmAgg) {
@@ -348,6 +319,13 @@ function main() {
     mkdirSync(RESULTS_DIR, { recursive: true });
   }
 
+  console.log('Loading WASM module...');
+  const wasmMod = loadWasmModule();
+  if (!wasmMod) {
+    process.exit(1);
+  }
+  console.log('WASM module loaded.\n');
+
   const workloads = listWorkloads();
   console.log(`Workloads: ${workloads.join(', ')}`);
   console.log(
@@ -357,7 +335,7 @@ function main() {
 
   const allResults = [];
   for (const name of workloads) {
-    const result = benchmarkWorkload(name);
+    const result = benchmarkWorkload(name, wasmMod);
     allResults.push(result);
   }
 
@@ -365,13 +343,7 @@ function main() {
     os: `${os.type()} ${os.release()}`,
     cpu: os.cpus()[0]?.model || 'unknown',
     node: process.version,
-    rust: (() => {
-      try {
-        return execSync('rustc --version', { encoding: 'utf-8' }).trim();
-      } catch {
-        return 'unknown';
-      }
-    })(),
+    wasm: 'direct (wasm-bindgen, in-process)',
     timestamp: new Date().toISOString(),
     warmup_events: WARMUP,
     measured_events: MEASURED,
