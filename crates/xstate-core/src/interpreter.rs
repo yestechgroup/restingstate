@@ -165,10 +165,19 @@ impl Interpreter {
             }
             StateValue::Compound { state: name, child } if self.contains_parallel(child) => {
                 let new_child = self.send(child, event, context, guards, actions, clock)?;
-                Some(StateValue::Compound {
-                    state: name.clone(),
-                    child: Box::new(new_child),
-                })
+                if self.contains_parallel(&new_child) {
+                    // The parallel (or a region of it) handled the event
+                    // internally: preserve the compound wrapper.
+                    Some(StateValue::Compound {
+                        state: name.clone(),
+                        child: Box::new(new_child),
+                    })
+                } else {
+                    // The new state no longer contains the parallel: a
+                    // transition on the compound node itself (or a history
+                    // target) exited it, and the value is already complete.
+                    Some(new_child)
+                }
             }
             _ => {
                 let path = self.find_full_path(&current);
@@ -379,12 +388,44 @@ impl Interpreter {
         }
 
         if changed {
-            Some(StateValue::Parallel {
+            return Some(StateValue::Parallel {
                 regions: new_regions,
-            })
-        } else {
-            None
+            });
         }
+
+        let current_state = StateValue::Parallel {
+            regions: regions.to_vec(),
+        };
+        let path = self.build_parallel_full_path(parallel_node, regions);
+        self.send_along_path(
+            &path,
+            &current_state,
+            event,
+            event_payload,
+            context,
+            guards,
+            actions,
+            clock,
+        )
+    }
+
+    fn build_parallel_full_path<'a>(
+        &self,
+        parallel_node: &'a StateNode,
+        regions: &[(String, StateValue)],
+    ) -> Vec<&'a StateNode> {
+        let mut path = vec![parallel_node];
+        for (region_name, region_value) in regions {
+            if let Some(region_node) = parallel_node
+                .children
+                .iter()
+                .find(|n| &n.name == region_name)
+            {
+                path.push(region_node);
+                path.extend(self.find_full_path_inner(region_value, &region_node.children));
+            }
+        }
+        path
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -405,47 +446,127 @@ impl Interpreter {
                 let node = search_scope
                     .iter()
                     .find(|n| n.name == *name)
-                    .or_else(|| transition_scope.iter().find(|n| n.name == *name))?;
-                if node.node_type == StateType::Final {
-                    return None;
+                    .or_else(|| transition_scope.iter().find(|n| n.name == *name))
+                    .or_else(|| Self::find_node_deep(search_scope, name))
+                    .or_else(|| Self::find_node_deep(transition_scope, name))?;
+                self.check_node_transitions(
+                    node,
+                    state,
+                    transition_scope,
+                    event,
+                    event_payload,
+                    context,
+                    guards,
+                    actions,
+                    clock,
+                )
+            }
+            StateValue::Compound {
+                state: compound_name,
+                child,
+            } => {
+                let node = search_scope
+                    .iter()
+                    .find(|n| n.name == *compound_name)
+                    .or_else(|| Self::find_node_deep(search_scope, compound_name))?;
+                if let Some(result) = self.check_node_transitions(
+                    node,
+                    state,
+                    transition_scope,
+                    event,
+                    event_payload,
+                    context,
+                    guards,
+                    actions,
+                    clock,
+                ) {
+                    return Some(result);
                 }
-                for transition in &node.transitions {
-                    if transition.event != event {
-                        continue;
-                    }
-                    if let Some(ref guard) = transition.guard {
-                        if !guards(&guard.name, context, event_payload) {
-                            continue;
-                        }
-                    }
-                    if let Some(ref target_name) = transition.target {
-                        let target = transition_scope.iter().find(|n| n.name == *target_name)?;
-                        let target_value = self.resolve_initial_value(target);
-                        let now = clock.now_ms();
-                        self.entry_times
-                            .borrow_mut()
-                            .insert(target.name.clone(), now);
-                        for action_name in &node.exit {
-                            actions(action_name, &[], event_payload);
-                        }
-                        for action in &transition.actions {
-                            actions(&action.name, &action.args, event_payload);
-                        }
-                        for action_name in &target.entry {
-                            actions(action_name, &[], event_payload);
-                        }
-                        return Some(target_value);
-                    } else {
-                        for action in &transition.actions {
-                            actions(&action.name, &action.args, event_payload);
-                        }
-                        return Some(state.clone());
-                    }
-                }
-                None
+                let new_child = self.send_scoped(
+                    child,
+                    &node.children,
+                    &node.children,
+                    event,
+                    event_payload,
+                    context,
+                    guards,
+                    actions,
+                    clock,
+                )?;
+                Some(StateValue::Compound {
+                    state: compound_name.clone(),
+                    child: Box::new(new_child),
+                })
             }
             _ => None,
         }
+    }
+
+    fn find_node_deep<'a>(states: &'a [StateNode], name: &str) -> Option<&'a StateNode> {
+        for state in states {
+            if state.name == name {
+                return Some(state);
+            }
+            if let Some(found) = Self::find_node_deep(&state.children, name) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn check_node_transitions(
+        &self,
+        node: &StateNode,
+        current_value: &StateValue,
+        transition_scope: &[StateNode],
+        event: &str,
+        event_payload: &serde_json::Value,
+        context: &mut serde_json::Value,
+        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
+    ) -> Option<StateValue> {
+        if node.node_type == StateType::Final {
+            return None;
+        }
+        for transition in &node.transitions {
+            if transition.event != event {
+                continue;
+            }
+            if let Some(ref guard) = transition.guard {
+                if !guards(&guard.name, context, event_payload) {
+                    continue;
+                }
+            }
+            if let Some(ref target_name) = transition.target {
+                let target = transition_scope
+                    .iter()
+                    .find(|n| n.name == *target_name)
+                    .or_else(|| Self::find_node_deep(transition_scope, target_name))?;
+                let target_value = self.resolve_initial_value(target);
+                let now = clock.now_ms();
+                self.entry_times
+                    .borrow_mut()
+                    .insert(target.name.clone(), now);
+                for action_name in &node.exit {
+                    actions(action_name, &[], event_payload);
+                }
+                for action in &transition.actions {
+                    actions(&action.name, &action.args, event_payload);
+                }
+                for action_name in &target.entry {
+                    actions(action_name, &[], event_payload);
+                }
+                return Some(target_value);
+            } else {
+                for action in &transition.actions {
+                    actions(&action.name, &action.args, event_payload);
+                }
+                return Some(current_value.clone());
+            }
+        }
+        None
     }
 
     fn find_full_path(&self, value: &StateValue) -> Vec<&StateNode> {
@@ -598,7 +719,8 @@ impl Interpreter {
             && path_to_named.len() >= 2
         {
             let ancestors = &path_to_named[..path_to_named.len() - 1];
-            return Some(self.resolve_history_target(ancestors));
+            let is_deep = leaf.node_type == StateType::DeepHistory;
+            return Some(self.resolve_history_target(ancestors, is_deep));
         }
 
         let value = self.state_value_from_path(&path_to_named);
@@ -624,7 +746,8 @@ impl Interpreter {
             && path.len() >= 2
         {
             let ancestors = &path[..path.len() - 1];
-            return Some(self.resolve_history_target(ancestors));
+            let is_deep = leaf.node_type == StateType::DeepHistory;
+            return Some(self.resolve_history_target(ancestors, is_deep));
         }
 
         let value = self.state_value_from_path(&path);
@@ -636,8 +759,17 @@ impl Interpreter {
     fn resolve_history_target<'a>(
         &self,
         ancestors: &[&'a StateNode],
+        is_deep: bool,
     ) -> (Vec<&'a StateNode>, StateValue) {
         let parent = *ancestors.last().expect("ancestors should not be empty");
+        // xstate ignores shallow history states as direct children of parallel
+        // states: the parallel state re-enters its initial configuration.
+        if parent.node_type == StateType::Parallel && !is_deep {
+            let value = self.state_value_from_path(ancestors);
+            let mut full_path = ancestors.to_vec();
+            self.expand_initial_path(parent, &mut full_path);
+            return (full_path, value);
+        }
         let recorded = self.history.borrow().get(&parent.name).cloned();
         if let Some(recorded) = recorded {
             let mut value = recorded.clone();
@@ -789,7 +921,33 @@ impl Interpreter {
         path: &[&StateNode],
         node_idx: usize,
     ) -> StateValue {
+        if node.node_type == StateType::Parallel {
+            let regions: Vec<_> = node
+                .children
+                .iter()
+                .filter(|c| {
+                    c.node_type != StateType::History && c.node_type != StateType::DeepHistory
+                })
+                .map(|region| {
+                    let value = match path.iter().position(|n| n.name == region.name) {
+                        Some(ridx) => self.compute_history_value(region, path, ridx),
+                        None => self.resolve_region_value(region),
+                    };
+                    (region.name.clone(), value)
+                })
+                .collect();
+            return StateValue::Parallel { regions };
+        }
         if let Some(child) = path.get(node_idx + 1) {
+            // The child is a leaf when the path ends here or the next path
+            // node belongs to a different subtree (e.g. a sibling region).
+            let child_is_leaf = match path.get(node_idx + 2) {
+                None => true,
+                Some(next) => Self::find_node_deep(&child.children, &next.name).is_none(),
+            };
+            if child_is_leaf {
+                return StateValue::Atomic(child.name.clone());
+            }
             let child_value = self.compute_history_value(child, path, node_idx + 1);
             if child.name != node.name {
                 StateValue::Compound {
@@ -2546,5 +2704,291 @@ mod tests {
                 }),
             }
         );
+    }
+
+    #[test]
+    fn parallel_node_own_transition() {
+        let machine = Machine {
+            id: "m".into(),
+            initial: "on".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                IrStateNode {
+                    name: "on".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec!["exit_on".into()],
+                    transitions: vec![Transition {
+                        event: "POWER".into(),
+                        target: Some("off".into()),
+                        guard: None,
+                        actions: vec![Action {
+                            name: "power_off".into(),
+                            args: vec![],
+                        }],
+                        description: None,
+                        delay_ms: None,
+                    }],
+                    children: vec![
+                        IrStateNode {
+                            name: "a".into(),
+                            description: None,
+                            initial: Some("a1".into()),
+                            entry: vec![],
+                            exit: vec!["exit_a".into()],
+                            transitions: vec![],
+                            children: vec![
+                                IrStateNode {
+                                    name: "a1".into(),
+                                    description: None,
+                                    initial: None,
+                                    entry: vec![],
+                                    exit: vec!["exit_a1".into()],
+                                    transitions: vec![],
+                                    children: vec![],
+                                    node_type: StateType::Atomic,
+                                    tags: vec![],
+                                    invoke: None,
+                                },
+                                IrStateNode {
+                                    name: "a2".into(),
+                                    description: None,
+                                    initial: None,
+                                    entry: vec![],
+                                    exit: vec![],
+                                    transitions: vec![],
+                                    children: vec![],
+                                    node_type: StateType::Atomic,
+                                    tags: vec![],
+                                    invoke: None,
+                                },
+                            ],
+                            node_type: StateType::Compound,
+                            tags: vec![],
+                            invoke: None,
+                        },
+                        IrStateNode {
+                            name: "b".into(),
+                            description: None,
+                            initial: Some("b1".into()),
+                            entry: vec![],
+                            exit: vec!["exit_b".into()],
+                            transitions: vec![],
+                            children: vec![
+                                IrStateNode {
+                                    name: "b1".into(),
+                                    description: None,
+                                    initial: None,
+                                    entry: vec![],
+                                    exit: vec!["exit_b1".into()],
+                                    transitions: vec![],
+                                    children: vec![],
+                                    node_type: StateType::Atomic,
+                                    tags: vec![],
+                                    invoke: None,
+                                },
+                                IrStateNode {
+                                    name: "b2".into(),
+                                    description: None,
+                                    initial: None,
+                                    entry: vec![],
+                                    exit: vec![],
+                                    transitions: vec![],
+                                    children: vec![],
+                                    node_type: StateType::Atomic,
+                                    tags: vec![],
+                                    invoke: None,
+                                },
+                            ],
+                            node_type: StateType::Compound,
+                            tags: vec![],
+                            invoke: None,
+                        },
+                    ],
+                    node_type: StateType::Parallel,
+                    tags: vec![],
+                    invoke: None,
+                },
+                IrStateNode {
+                    name: "off".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec!["enter_off".into()],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                },
+            ],
+        };
+
+        let interpreter = Interpreter::new(machine);
+        let state = interpreter.initial_state();
+        assert_eq!(
+            state,
+            StateValue::Parallel {
+                regions: vec![
+                    ("a".into(), StateValue::Atomic("a1".into())),
+                    ("b".into(), StateValue::Atomic("b1".into())),
+                ],
+            }
+        );
+
+        let mut context = interpreter.initial_context();
+        let mut actions_log: Vec<String> = Vec::new();
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
+            actions_log.push(name.to_string());
+        };
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+
+        let new_state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "POWER"}),
+                &mut context,
+                &guards,
+                &mut actions,
+                &MockClock::new(0),
+            )
+            .unwrap();
+
+        assert_eq!(new_state, StateValue::Atomic("off".into()));
+        assert!(actions_log.contains(&"exit_a1".to_string()));
+        assert!(actions_log.contains(&"exit_a".to_string()));
+        assert!(actions_log.contains(&"exit_b1".to_string()));
+        assert!(actions_log.contains(&"exit_b".to_string()));
+        assert!(actions_log.contains(&"exit_on".to_string()));
+        assert!(actions_log.contains(&"power_off".to_string()));
+        assert!(actions_log.contains(&"enter_off".to_string()));
+    }
+
+    #[test]
+    fn parallel_nested_compound_transition() {
+        let machine = Machine {
+            id: "m".into(),
+            initial: "outer".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![IrStateNode {
+                name: "outer".into(),
+                description: None,
+                initial: None,
+                entry: vec![],
+                exit: vec![],
+                transitions: vec![],
+                children: vec![IrStateNode {
+                    name: "region".into(),
+                    description: None,
+                    initial: Some("nested".into()),
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![IrStateNode {
+                        name: "nested".into(),
+                        description: None,
+                        initial: Some("deep".into()),
+                        entry: vec![],
+                        exit: vec![],
+                        transitions: vec![],
+                        children: vec![
+                            IrStateNode {
+                                name: "deep".into(),
+                                description: None,
+                                initial: None,
+                                entry: vec![],
+                                exit: vec!["exit_deep".into()],
+                                transitions: vec![Transition {
+                                    event: "GO".into(),
+                                    target: Some("elsewhere".into()),
+                                    guard: None,
+                                    actions: vec![Action {
+                                        name: "go".into(),
+                                        args: vec![],
+                                    }],
+                                    description: None,
+                                    delay_ms: None,
+                                }],
+                                children: vec![],
+                                node_type: StateType::Atomic,
+                                tags: vec![],
+                                invoke: None,
+                            },
+                            IrStateNode {
+                                name: "elsewhere".into(),
+                                description: None,
+                                initial: None,
+                                entry: vec!["enter_elsewhere".into()],
+                                exit: vec![],
+                                transitions: vec![],
+                                children: vec![],
+                                node_type: StateType::Atomic,
+                                tags: vec![],
+                                invoke: None,
+                            },
+                        ],
+                        node_type: StateType::Compound,
+                        tags: vec![],
+                        invoke: None,
+                    }],
+                    node_type: StateType::Compound,
+                    tags: vec![],
+                    invoke: None,
+                }],
+                node_type: StateType::Parallel,
+                tags: vec![],
+                invoke: None,
+            }],
+        };
+
+        let interpreter = Interpreter::new(machine);
+        let state = interpreter.initial_state();
+        assert_eq!(
+            state,
+            StateValue::Parallel {
+                regions: vec![(
+                    "region".into(),
+                    StateValue::Compound {
+                        state: "nested".into(),
+                        child: Box::new(StateValue::Atomic("deep".into())),
+                    },
+                )],
+            }
+        );
+
+        let mut context = interpreter.initial_context();
+        let mut actions_log: Vec<String> = Vec::new();
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
+            actions_log.push(name.to_string());
+        };
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+
+        let new_state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "GO"}),
+                &mut context,
+                &guards,
+                &mut actions,
+                &MockClock::new(0),
+            )
+            .unwrap();
+
+        assert_eq!(
+            new_state,
+            StateValue::Parallel {
+                regions: vec![(
+                    "region".into(),
+                    StateValue::Compound {
+                        state: "nested".into(),
+                        child: Box::new(StateValue::Atomic("elsewhere".into())),
+                    },
+                )],
+            }
+        );
+        assert!(actions_log.contains(&"exit_deep".to_string()));
+        assert!(actions_log.contains(&"go".to_string()));
+        assert!(actions_log.contains(&"enter_elsewhere".to_string()));
     }
 }

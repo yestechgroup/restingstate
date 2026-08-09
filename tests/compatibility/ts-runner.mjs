@@ -99,7 +99,10 @@ function irToXstateConfig(ir) {
   function convertState(state, path) {
     const result = { id: path };
 
-    if (state.type && state.type !== "atomic") {
+    if (state.type === "deephistory") {
+      result.type = "history";
+      result.history = "deep";
+    } else if (state.type && state.type !== "atomic") {
       result.type = state.type;
     }
 

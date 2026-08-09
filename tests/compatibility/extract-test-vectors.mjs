@@ -344,10 +344,6 @@ const SKIP_PATTERNS = [
   // `to:`/`type:`/`id:`/`route:`/`initial:` values are not state targets.
   [/[\s{};,](?!to\s*:|route\s*:|type\s*:|id\s*:|initial\s*:)[A-Za-z_$][\w$]*\s*:\s*['"`]#[^'"`]+['"`]/, "absolute targets"],
   [/\bafter\s*:/, "after (timing)"],
-  // `{ history: true }`, `{ history: 'deep' }`, `{ history: 'shallow' }`
-  // shorthand state definitions: the parser only understands
-  // `type: 'history'` nodes, so these machines cannot be represented.
-  [/{\s*history\s*:\s*(?:true|'[^']*'|"[^"]*")\s*}/, "history shorthand"],
   // `onDone` on a state node (parallel completion) is not extracted.
   [/\bonDone\s*:/, "onDone (final completion)"],
 ];
@@ -432,7 +428,12 @@ function irToXstateConfig(ir) {
 
   function convertState(state, path) {
     const result = { id: path };
-    if (state.type && state.type !== "atomic") result.type = state.type;
+    if (state.type === "deephistory") {
+      result.type = "history";
+      result.history = "deep";
+    } else if (state.type && state.type !== "atomic") {
+      result.type = state.type;
+    }
     if (state.entry && state.entry.length > 0) result.entry = state.entry;
     if (state.exit && state.exit.length > 0) result.exit = state.exit;
     if (state.tags && state.tags.length > 0) result.tags = state.tags;

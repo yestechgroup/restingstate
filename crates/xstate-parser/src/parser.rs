@@ -690,6 +690,23 @@ fn extract_state_node(
         .map(|s| parse_state_type(&s))
         .unwrap_or_default();
 
+    // `history: true` / `history: 'deep'` / `history: 'shallow'` shorthand
+    let node_type = if node_type == StateType::Atomic {
+        match obj.get_object_prop_value("history") {
+            Some(Expression::BooleanLiteral(b)) if b.value => StateType::History,
+            Some(Expression::StringLiteral(s)) => {
+                if s.value == "deep" {
+                    StateType::DeepHistory
+                } else {
+                    StateType::History
+                }
+            }
+            _ => node_type,
+        }
+    } else {
+        node_type
+    };
+
     let initial = extract_string_prop(obj, "initial");
 
     let entry = obj

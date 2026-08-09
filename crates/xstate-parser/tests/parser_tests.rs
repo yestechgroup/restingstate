@@ -218,6 +218,16 @@ fn parse_after_machine() {
 }
 
 #[test]
+fn parse_history_shorthand() {
+    let source = fixture!("history-shorthand");
+    let machine = parse(&source).unwrap();
+
+    let on_state = machine.states.iter().find(|s| s.name == "on").unwrap();
+    let hist = on_state.children.iter().find(|s| s.name == "hist").unwrap();
+    assert_eq!(hist.node_type, StateType::History);
+}
+
+#[test]
 fn parse_invoke_machine() {
     let source = fixture!("invoke");
     let machine = parse(&source).unwrap();
