@@ -22,6 +22,279 @@ pub fn parse(source: &str) -> Result<Machine, ParseError> {
     extract_machine(&ret.program)
 }
 
+/// Parse a TypeScript source and return ALL machines found in it.
+/// Unlike `parse()`, this does not stop at the first createMachine call.
+pub fn parse_all(source: &str) -> Result<Vec<Machine>, ParseError> {
+    let allocator = Allocator::default();
+    let ret = Parser::new(&allocator, source, SourceType::ts()).parse();
+
+    if !ret.errors.is_empty() {
+        return Err(ParseError::OxcParse);
+    }
+
+    collect_all_machines(&ret.program)
+}
+
+fn collect_all_machines(program: &Program) -> Result<Vec<Machine>, ParseError> {
+    let mut machines = Vec::new();
+    for stmt in program.body.iter() {
+        collect_from_statement(stmt, &mut machines)?;
+    }
+    Ok(machines)
+}
+
+fn collect_from_statement<'a>(
+    stmt: &'a Statement<'a>,
+    machines: &mut Vec<Machine>,
+) -> Result<(), ParseError> {
+    match stmt {
+        // `createMachine({...})` or `describe(() => { createMachine(...) })`
+        Statement::ExpressionStatement(expr_stmt) => {
+            collect_from_expression(&expr_stmt.expression, machines)?;
+        }
+        // `const x = createMachine({...})`
+        Statement::VariableDeclaration(var_decl) => {
+            for decl in var_decl.declarations.iter() {
+                if let Some(init) = &decl.init {
+                    collect_from_expression(init, machines)?;
+                }
+            }
+        }
+        // `export const x = createMachine({...})`
+        Statement::ExportNamedDeclaration(export) => {
+            if let Some(decl) = &export.declaration {
+                collect_from_declaration(decl, machines)?;
+            }
+        }
+        // `export default createMachine({...})`
+        Statement::ExportDefaultDeclaration(export) => {
+            if let Some(expr) = export.declaration.as_expression() {
+                collect_from_expression(expr, machines)?;
+            }
+        }
+        // `function foo() { createMachine({...}) }`
+        Statement::FunctionDeclaration(func) => {
+            if let Some(body) = &func.body {
+                collect_from_function_body(body, machines)?;
+            }
+        }
+        // `return createMachine({...})`
+        Statement::ReturnStatement(ret) => {
+            if let Some(arg) = &ret.argument {
+                collect_from_expression(arg, machines)?;
+            }
+        }
+        // `{ ... }` blocks (bodies of if/loops are also Statements)
+        Statement::BlockStatement(block) => {
+            for stmt in block.body.iter() {
+                collect_from_statement(stmt, machines)?;
+            }
+        }
+        Statement::IfStatement(if_stmt) => {
+            collect_from_statement(&if_stmt.consequent, machines)?;
+            if let Some(alternate) = &if_stmt.alternate {
+                collect_from_statement(alternate, machines)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn collect_from_declaration<'a>(
+    decl: &'a Declaration<'a>,
+    machines: &mut Vec<Machine>,
+) -> Result<(), ParseError> {
+    match decl {
+        Declaration::VariableDeclaration(var_decl) => {
+            for declarator in var_decl.declarations.iter() {
+                if let Some(init) = &declarator.init {
+                    collect_from_expression(init, machines)?;
+                }
+            }
+        }
+        Declaration::FunctionDeclaration(func) => {
+            if let Some(body) = &func.body {
+                collect_from_function_body(body, machines)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn collect_from_function_body<'a>(
+    body: &'a FunctionBody<'a>,
+    machines: &mut Vec<Machine>,
+) -> Result<(), ParseError> {
+    for stmt in body.statements.iter() {
+        collect_from_statement(stmt, machines)?;
+    }
+    Ok(())
+}
+
+fn collect_from_expression<'a>(
+    expr: &'a Expression<'a>,
+    machines: &mut Vec<Machine>,
+) -> Result<(), ParseError> {
+    match expr {
+        Expression::CallExpression(call) => collect_from_call(call, machines),
+        // Optional chaining: `foo?.createMachine({...})`
+        Expression::ChainExpression(chain) => match &chain.expression {
+            ChainElement::CallExpression(call) => collect_from_call(call, machines),
+            ChainElement::TSNonNullExpression(non_null) => {
+                collect_from_expression(&non_null.expression, machines)
+            }
+            _ => Ok(()),
+        },
+        // `(createMachine({...}))`
+        Expression::ParenthesizedExpression(paren) => {
+            collect_from_expression(&paren.expression, machines)
+        }
+        // `() => { const m = createMachine({...}); }`
+        Expression::ArrowFunctionExpression(arrow) => {
+            collect_from_function_body(&arrow.body, machines)
+        }
+        // `function () { const m = createMachine({...}); }`
+        Expression::FunctionExpression(func) => {
+            if let Some(body) = &func.body {
+                collect_from_function_body(body, machines)?;
+            }
+            Ok(())
+        }
+        // `{ on: { EVENT: () => createMachine({...}) } }`
+        Expression::ObjectExpression(obj) => {
+            for prop in obj.properties.iter() {
+                if let ObjectPropertyKind::ObjectProperty(p) = prop {
+                    collect_from_expression(&p.value, machines)?;
+                }
+            }
+            Ok(())
+        }
+        Expression::ArrayExpression(arr) => {
+            for elem in arr.elements.iter() {
+                if let Some(elem_expr) = elem.as_expression() {
+                    collect_from_expression(elem_expr, machines)?;
+                }
+            }
+            Ok(())
+        }
+        Expression::StaticMemberExpression(member) => {
+            collect_from_expression(&member.object, machines)
+        }
+        // TypeScript wrappers: `createMachine({...}) as const`, `satisfies`, `!`, `<T>`
+        Expression::TSAsExpression(as_expr) => {
+            collect_from_expression(&as_expr.expression, machines)
+        }
+        Expression::TSSatisfiesExpression(sat) => {
+            collect_from_expression(&sat.expression, machines)
+        }
+        Expression::TSTypeAssertion(assertion) => {
+            collect_from_expression(&assertion.expression, machines)
+        }
+        Expression::TSNonNullExpression(non_null) => {
+            collect_from_expression(&non_null.expression, machines)
+        }
+        _ => Ok(()),
+    }
+}
+
+fn collect_from_call<'a>(
+    call: &'a CallExpression<'a>,
+    machines: &mut Vec<Machine>,
+) -> Result<(), ParseError> {
+    if let Some((config, delays)) = try_get_machine_config(call) {
+        push_machine_lenient(config, &delays, machines);
+    }
+    // Recurse into arguments (they may contain nested createMachine calls)
+    for arg in call.arguments.iter() {
+        collect_from_argument(arg, machines)?;
+    }
+    Ok(())
+}
+
+fn collect_from_argument<'a>(
+    arg: &'a Argument<'a>,
+    machines: &mut Vec<Machine>,
+) -> Result<(), ParseError> {
+    match arg {
+        Argument::SpreadElement(spread) => collect_from_expression(&spread.argument, machines),
+        _ => {
+            if let Some(expr) = arg.as_expression() {
+                collect_from_expression(expr, machines)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Extract every `createMachine(...)` call from a file, in source order.
+///
+/// Unlike [`parse`], this walks the whole program (including machines nested
+/// inside `it(...)`/`describe(...)` callback bodies) and is lenient per
+/// machine: a machine missing `id`/`initial` gets a synthesized id and its
+/// first state as initial, matching XState's default behaviour.
+fn push_machine_lenient(
+    config: &ObjectExpression,
+    delays: &HashMap<String, u64>,
+    out: &mut Vec<Machine>,
+) {
+    let id = extract_string_prop(config, "id").unwrap_or_else(|| format!("machine-{}", out.len()));
+
+    let states = config
+        .get_object_prop_value("states")
+        .and_then(|expr| match expr {
+            Expression::ObjectExpression(states_obj) => {
+                extract_states_object(states_obj, delays).ok()
+            }
+            _ => None,
+        })
+        .unwrap_or_default();
+
+    // A root-parallel machine has no single initial state; leave the initial
+    // empty so callers can detect and skip it (the IR cannot express a
+    // parallel root, and neither runtime can run one faithfully).
+    let root_type = extract_string_prop(config, "type");
+    let initial = if root_type.as_deref() == Some("parallel") {
+        extract_string_prop(config, "initial").unwrap_or_default()
+    } else {
+        extract_string_prop(config, "initial")
+            .or_else(|| states.first().map(|s| s.name.clone()))
+            .unwrap_or_default()
+    };
+
+    let context = config
+        .get_object_prop_value("context")
+        .and_then(|expr| match expr {
+            Expression::ObjectExpression(ctx_obj) => Some(extract_context_schema(ctx_obj)),
+            _ => None,
+        })
+        .unwrap_or_else(|| ContextSchema { fields: vec![] });
+
+    let mut machine = Machine {
+        id,
+        initial,
+        context,
+        states,
+    };
+    infer_state_types(&mut machine.states);
+    out.push(machine);
+}
+
+/// xstate.js infers a state to be compound when it declares `initial` or
+/// children even without an explicit `type: 'compound'`. Mirror that so the
+/// runtime resolves nested states correctly.
+fn infer_state_types(states: &mut [StateNode]) {
+    for state in states.iter_mut() {
+        if state.node_type == StateType::Atomic
+            && (state.initial.is_some() || !state.children.is_empty())
+        {
+            state.node_type = StateType::Compound;
+        }
+        infer_state_types(&mut state.children);
+    }
+}
+
 fn extract_machine(program: &Program) -> Result<Machine, ParseError> {
     for stmt in program.body.iter() {
         match find_create_machine_in_stmt(stmt) {
@@ -124,7 +397,12 @@ fn try_extract_create_machine_config<'a>(
         Expression::CallExpression(call) => call,
         _ => return None,
     };
+    try_get_machine_config(call)
+}
 
+fn try_get_machine_config<'a>(
+    call: &'a CallExpression<'a>,
+) -> Option<(&'a ObjectExpression<'a>, HashMap<String, u64>)> {
     let is_create = match &call.callee {
         Expression::Identifier(ident) => ident.name.as_ref() == "createMachine",
         Expression::StaticMemberExpression(member) => {
