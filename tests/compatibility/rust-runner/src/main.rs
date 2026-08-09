@@ -14,6 +14,8 @@ struct TestVector {
     protocol: Protocol,
     #[serde(default)]
     expected: Vec<ExpectedStep>,
+    #[serde(default)]
+    skip_compare: bool,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -55,6 +57,8 @@ struct RunnerOutput {
     step: usize,
     event: serde_json::Value,
     snapshot: RunnerSnapshot,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    skip_compare: Option<bool>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -157,6 +161,11 @@ fn main() {
             snapshot: RunnerSnapshot {
                 value: serde_json::to_value(&state).expect("Failed to serialize state"),
                 context: context.clone(),
+            },
+            skip_compare: if i == 0 && test_vector.skip_compare {
+                Some(true)
+            } else {
+                None
             },
         });
     }

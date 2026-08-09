@@ -1,0 +1,72 @@
+{
+  "machine_name": "invokeParentChild",
+  "machine_ir": {
+    "id": "invokeParentChild",
+    "initial": "idle",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "idle",
+        "type": "atomic",
+        "transitions": [
+          { "event": "START", "target": "loading" }
+        ]
+      },
+      {
+        "name": "loading",
+        "type": "atomic",
+        "transitions": [
+          { "event": "done.invoke.child", "target": "done" },
+          { "event": "error.platform.child", "target": "error" }
+        ],
+        "invoke": {
+          "src": "childMachine",
+          "id": "child",
+          "on_done": [],
+          "on_error": []
+        }
+      },
+      { "name": "done", "type": "atomic", "transitions": [] },
+      { "name": "error", "type": "atomic", "transitions": [] }
+    ]
+  },
+  "machine_config": {
+    "id": "invokeParentChild",
+    "initial": "idle",
+    "context": {},
+    "states": {
+      "idle": { "on": { "START": "loading" } },
+      "loading": {
+        "on": {
+          "done.invoke.child": "done",
+          "error.platform.child": "error"
+        },
+        "invoke": {
+          "src": "childMachine",
+          "id": "child"
+        }
+      },
+      "done": {},
+      "error": {}
+    }
+  },
+  "protocol": {
+    "initial": { "value": "idle", "context": {} },
+    "events": [
+      { "type": "START" },
+      { "type": "done.invoke.child" }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": { "type": "START" },
+      "snapshot": { "value": "loading", "context": {} }
+    },
+    {
+      "step": 1,
+      "event": { "type": "done.invoke.child" },
+      "snapshot": { "value": "done", "context": {} }
+    }
+  ]
+}

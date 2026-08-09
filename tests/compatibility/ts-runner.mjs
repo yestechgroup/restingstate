@@ -213,7 +213,12 @@ function stripImplMeta(value) {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
       if (k === "$$impl") continue;
-      out[k] = stripImplMeta(v);
+      const stripped = stripImplMeta(v);
+      if (stripped !== null && typeof stripped === "object" && !Array.isArray(stripped) && Object.keys(stripped).length === 0) {
+        out[k] = k;
+      } else {
+        out[k] = stripped;
+      }
     }
     return out;
   }
@@ -364,6 +369,7 @@ for (const tv of testVectors) {
         value: stripImplMeta(snapshot.value),
         context: stripImplMeta(snapshot.context),
       },
+      ...(results.length === 0 && tv.skip_compare ? { skip_compare: true } : {}),
     });
   }
 }

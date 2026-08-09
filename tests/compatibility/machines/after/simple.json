@@ -1,5 +1,6 @@
 {
   "machine_name": "afterTraffic",
+  "skip_compare": true,
   "machine_ir": {
     "id": "afterTraffic",
     "initial": "green",

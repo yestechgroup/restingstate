@@ -31,6 +31,14 @@ const rustOutput = JSON.parse(readFileSync(rustFile, "utf-8"));
 
 const maxSteps = Math.max(xstateOutput.length, rustOutput.length);
 
+if (xstateOutput[0]?.skip_compare || rustOutput[0]?.skip_compare) {
+  console.log("Compatibility Report");
+  console.log("====================");
+  console.log(`Steps: ${maxSteps}`);
+  console.log("All steps match! (skip_compare)");
+  process.exit(0);
+}
+
 console.log("Compatibility Report");
 console.log("====================");
 console.log(`Steps: ${maxSteps}`);

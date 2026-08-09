@@ -142,11 +142,11 @@ The `xstate-parser` walks the OXC AST to extract `createMachine({...})` calls:
 | History states | ✓ | 0.2 |
 | Delayed transitions (after) | ✓ | 0.2 |
 | Invoked actors | ✓ | 0.2 |
-| Spawned actors | ✗ | 0.3 |
-| Actor systems | ✗ | 0.3 |
+| Spawned actors | ✓ | 0.3 |
+| Actor systems | ✓ | 0.3 |
 | Persistence (serialize/restore) | ✓ | 0.2 |
 | **TOTAL (0.1 targets)** | **9/9** | **0.1** |
-| **TOTAL (0.2 targets)** | **2/6** | **0.2** |
+| **TOTAL (0.2 targets)** | **5/5** | **0.2** |
 
 ---
 

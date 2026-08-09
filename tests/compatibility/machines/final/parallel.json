@@ -59,37 +59,32 @@
   },
   "machine_config": {
     "id": "parallelFinal",
-    "initial": "root",
+    "type": "parallel",
     "context": {},
     "states": {
-      "root": {
-        "type": "parallel",
+      "a": {
+        "initial": "idle",
         "states": {
-          "a": {
-            "initial": "idle",
-            "states": {
-              "idle": {
-                "on": {
-                  "NEXT": "done"
-                }
-              },
-              "done": {
-                "type": "final"
-              }
+          "idle": {
+            "on": {
+              "NEXT": "done"
             }
           },
-          "b": {
-            "initial": "idle",
-            "states": {
-              "idle": {
-                "on": {
-                  "NEXT": "done"
-                }
-              },
-              "done": {
-                "type": "final"
-              }
+          "done": {
+            "type": "final"
+          }
+        }
+      },
+      "b": {
+        "initial": "idle",
+        "states": {
+          "idle": {
+            "on": {
+              "NEXT": "done"
             }
+          },
+          "done": {
+            "type": "final"
           }
         }
       }

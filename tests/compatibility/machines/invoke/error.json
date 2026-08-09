@@ -1,0 +1,58 @@
+{
+  "machine_name": "invokeError",
+  "machine_ir": {
+    "id": "invokeError",
+    "initial": "loading",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "loading",
+        "type": "atomic",
+        "transitions": [
+          { "event": "done.invoke.worker", "target": "done" },
+          { "event": "error.platform.worker", "target": "failed" }
+        ],
+        "invoke": {
+          "src": "workerMachine",
+          "id": "worker",
+          "on_done": [],
+          "on_error": []
+        }
+      },
+      { "name": "done", "type": "atomic", "transitions": [] },
+      { "name": "failed", "type": "atomic", "transitions": [] }
+    ]
+  },
+  "machine_config": {
+    "id": "invokeError",
+    "initial": "loading",
+    "context": {},
+    "states": {
+      "loading": {
+        "on": {
+          "done.invoke.worker": "done",
+          "error.platform.worker": "failed"
+        },
+        "invoke": {
+          "src": "workerMachine",
+          "id": "worker"
+        }
+      },
+      "done": {},
+      "failed": {}
+    }
+  },
+  "protocol": {
+    "initial": { "value": "loading", "context": {} },
+    "events": [
+      { "type": "error.platform.worker" }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": { "type": "error.platform.worker" },
+      "snapshot": { "value": "failed", "context": {} }
+    }
+  ]
+}
