@@ -22,6 +22,7 @@ cargo test --workspace -- --ignored  # Run compatibility harness (slow)
 | `xstate-codegen` | `quote`/`syn` Rust code generator (IR → Rust source) | `xstate-ir` |
 | `xstate-macro` | `#[xstate("path.ts")]` proc macro | `xstate-ir`, `xstate-parser`, `xstate-codegen` |
 | `xstate-napi` | Node.js native bindings + WASM target | `xstate-core` |
+| `xstate-actor` | Actor system (spawn, system, handles) | `xstate-core` |
 
 ---
 
@@ -79,6 +80,8 @@ xstate-core            — Pure Rust runtime (no TS/JS dependency)
 - `setup({}).createMachine({})` chained calls
 - `tags` and `description` metadata
 - `xstate!("path/to/machine.ts")` proc macro invocation
+- Multi-target transitions (cross-compound `#path` absolute targets)
+- `assign` built-in action support
 
 ---
 
@@ -138,6 +141,7 @@ The `xstate-parser` walks the OXC AST to extract `createMachine({...})` calls:
 | Guards (cond) | ✓ | 0.1 |
 | Context | ✓ | 0.1 |
 | Actions (entry/exit/transition) | ✓ | 0.1 |
+| assign built-in | ✓ | 0.1 |
 | Always transitions | ✓ | 0.2 |
 | History states | ✓ | 0.2 |
 | Delayed transitions (after) | ✓ | 0.2 |
@@ -145,8 +149,9 @@ The `xstate-parser` walks the OXC AST to extract `createMachine({...})` calls:
 | Spawned actors | ✓ | 0.3 |
 | Actor systems | ✓ | 0.3 |
 | Persistence (serialize/restore) | ✓ | 0.2 |
-| **TOTAL (0.1 targets)** | **9/9** | **0.1** |
+| **TOTAL (0.1 targets)** | **10/10** | **0.1** |
 | **TOTAL (0.2 targets)** | **5/5** | **0.2** |
+| **TOTAL (0.3 targets)** | **2/2** | **0.3** |
 
 ---
 
@@ -195,7 +200,7 @@ for each test vector:
 
 ### Test Vectors
 
-Test vectors live in `tests/compatibility/machines/` organized by category:
+Test vectors live in `tests/compatibility/machines/` organized by category (25 hand-crafted vectors across 13 categories):
 - `simple/` — atomic state machines (toggle, traffic-light)
 - `compound/` — nested/compound state machines (form)
 - `guards/` — machines with guarded transitions (auth)
@@ -205,6 +210,19 @@ Test vectors live in `tests/compatibility/machines/` organized by category:
 - `actions/` — entry/exit/transition actions (entry-exit, nested, reenter)
 - `persistence/` — snapshot save/restore (round-trip)
 - `always/` — eventless transitions (simple)
+- `after/` — delayed transitions
+- `history/` — history states
+- `invoke/` — invoked actors
+- `payload/` — event payload support
+
+Additional extracted test vectors (34 vectors) are generated from the xstate.js
+test suite and stored in `tests/compatibility/vectors/extracted/`. Use the
+extraction tool to regenerate them:
+
+```bash
+node tests/compatibility/extract-test-vectors.mjs \
+  tests/compatibility/xstate-vendor/packages/core/test/<name>.test.ts
+```
 
 ### Runners
 
@@ -344,8 +362,8 @@ This enables running XState machines in the browser via WASM, with JSON serializ
 
 ## Project Status
 
-All 7 planned phases complete. 92 tests pass. 14/16 xstate.js compatibility vectors pass (88%).
+All 7 planned phases complete. 92 tests pass. 25 hand-crafted compatibility vectors (13 categories) + 34 extracted vectors.
 
 ---
 
-*Last updated: Phase 0.2 (all 4 targets: Persistence + Always + History + Delays + Invoke)*
+*Last updated: Phase 0.3 (all targets complete: Spawned actors + Actor systems)*

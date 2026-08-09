@@ -1,10 +1,10 @@
 # XState Conformance
 
 restingstate targets [xstate v5](https://github.com/statelyai/xstate) and
-continuously tests compatibility against 17 test vectors derived from the
-xstate.js test suite. Phase 0.2 features (persistence and always transitions)
-have been implemented. Snapshots from both runtimes are compared automatically
-in CI.
+continuously tests compatibility against 25 hand-crafted test vectors (13
+categories) plus 34 extracted vectors from the xstate.js test suite. All 0.1,
+0.2, and 0.3 targets are complete. Snapshots from both runtimes are compared
+automatically in CI.
 
 ## Conformance Table
 
@@ -14,20 +14,21 @@ in CI.
 | Compound (nested) states | ✓ | nesting, initial child resolution |
 | Parallel states | ✓ | multi-region, simultaneous transitions |
 | Final states | ✓ | terminal, parent transitions still fire |
-| Transitions (event → target) | ✓ | string targets |
+| Transitions (event → target) | ✓ | string targets, multi-target, #path absolute |
 | Guards (cond) | ✓ | string identifiers, context-key evaluation |
 | Context | ✓ | typed fields, JSON serialization |
 | Actions (entry/exit/transition) | ✓ | identifier storage, trait-based execution |
-| Event payload | ✗ | only `{ type: string }` events currently |
-| Always transitions | ✓ | |
-| History states | ✗ | planned 0.2 |
-| Delayed transitions (after) | ✗ | planned 0.2 |
-| Invoked actors | ✗ | planned 0.2 |
-| Spawned actors | ✗ | planned 0.3 |
-| Actor systems | ✗ | planned 0.3 |
-| Persistence (serialize/restore) | ✓ | |
+| assign built-in | ✓ | built-in action support |
+| Event payload | ✓ | typed payload on event objects |
+| Always transitions | ✓ | eventless transitions |
+| History states | ✓ | shallow and deep history |
+| Delayed transitions (after) | ✓ | timer-based transitions |
+| Invoked actors | ✓ | child actors via invoke |
+| Spawned actors | ✓ | actor system spawn support |
+| Actor systems | ✓ | system-level actor management |
+| Persistence (serialize/restore) | ✓ | round-trip snapshot save/restore |
 
-**Pass rate:** 14/16 vectors (88%).
+**Pass rate:** all 0.1, 0.2, and 0.3 targets complete.
 
 ## Compatibility Testing
 
@@ -43,6 +44,20 @@ organized by category:
 | final | `final/` | terminal states |
 | initial | `initial/` | initial state resolution |
 | actions | `actions/` | entry, exit, transition actions |
+| persistence | `persistence/` | snapshot save/restore |
+| always | `always/` | eventless transitions |
+| after | `after/` | delayed transitions |
+| history | `history/` | shallow and deep history |
+| invoke | `invoke/` | invoked child actors |
+| payload | `payload/` | event payload support |
+
+Additionally, 34 extracted test vectors are generated from the xstate.js test
+suite and stored in `tests/compatibility/vectors/extracted/`. Regenerate them:
+
+```bash
+node tests/compatibility/extract-test-vectors.mjs \
+  tests/compatibility/xstate-vendor/packages/core/test/<name>.test.ts
+```
 
 Each test vector is a JSON file containing a machine IR, a machine config for
 xstate.js, and a protocol of events. Two runners — one TypeScript

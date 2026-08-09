@@ -536,7 +536,12 @@ fn extract_string_array(arr: &ArrayExpression) -> Vec<String> {
         .iter()
         .filter_map(|elem| {
             let expr = elem.as_expression()?;
-            extract_string(expr)
+            match expr {
+                Expression::CallExpression(call) if is_assign_call(call) => {
+                    Some("assign".to_string())
+                }
+                _ => extract_string(expr),
+            }
         })
         .collect()
 }
@@ -690,23 +695,6 @@ fn extract_state_node(
         .map(|s| parse_state_type(&s))
         .unwrap_or_default();
 
-    // `history: true` / `history: 'deep'` / `history: 'shallow'` shorthand
-    let node_type = if node_type == StateType::Atomic {
-        match obj.get_object_prop_value("history") {
-            Some(Expression::BooleanLiteral(b)) if b.value => StateType::History,
-            Some(Expression::StringLiteral(s)) => {
-                if s.value == "deep" {
-                    StateType::DeepHistory
-                } else {
-                    StateType::History
-                }
-            }
-            _ => node_type,
-        }
-    } else {
-        node_type
-    };
-
     let initial = extract_string_prop(obj, "initial");
 
     let entry = obj
@@ -756,6 +744,53 @@ fn extract_state_node(
         .transpose()?
         .unwrap_or_default();
 
+    let on_done: Vec<Transition> = obj
+        .get_object_prop_value("onDone")
+        .map(|expr| -> Result<Vec<Transition>, ParseError> {
+            match expr {
+                Expression::StringLiteral(s) => Ok(vec![Transition {
+                    event: String::new(),
+                    target: Some(s.value.to_string()),
+                    targets: vec![],
+                    guard: None,
+                    actions: vec![],
+                    description: None,
+                    delay_ms: None,
+                }]),
+                Expression::ObjectExpression(on_done_obj) => {
+                    Ok(vec![extract_transition_from_obj("", on_done_obj)])
+                }
+                Expression::ArrayExpression(arr) => {
+                    let mut transitions = Vec::new();
+                    for elem in arr.elements.iter() {
+                        if let Some(elem_expr) = elem.as_expression() {
+                            match elem_expr {
+                                Expression::StringLiteral(s) => {
+                                    transitions.push(Transition {
+                                        event: String::new(),
+                                        target: Some(s.value.to_string()),
+                                        targets: vec![],
+                                        guard: None,
+                                        actions: vec![],
+                                        description: None,
+                                        delay_ms: None,
+                                    });
+                                }
+                                Expression::ObjectExpression(obj) => {
+                                    transitions.push(extract_transition_from_obj("", obj));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    Ok(transitions)
+                }
+                _ => Ok(vec![]),
+            }
+        })
+        .transpose()?
+        .unwrap_or_default();
+
     let children = obj
         .get_object_prop_value("states")
         .and_then(|expr| match expr {
@@ -785,9 +820,39 @@ fn extract_state_node(
         })
         .unwrap_or_default();
 
+    // `history: true` / `history: 'deep'` / `history: 'shallow'` shorthand.
+    // Only apply when the state has no children — a compound state with
+    // `history: true` is a compound state with metadata, not a history
+    // pseudostate.
+    let node_type = if node_type == StateType::Atomic && children.is_empty() {
+        match obj.get_object_prop_value("history") {
+            Some(Expression::BooleanLiteral(b)) if b.value => StateType::History,
+            Some(Expression::StringLiteral(s)) => {
+                if s.value == "deep" {
+                    StateType::DeepHistory
+                } else {
+                    StateType::History
+                }
+            }
+            _ => node_type,
+        }
+    } else {
+        node_type
+    };
+
     let mut all_transitions = transitions;
     all_transitions.extend(always_transitions);
     all_transitions.extend(after_transitions);
+    // Merge invoke on_done/on_error into state transitions so the
+    // interpreter finds them via send_along_path.
+    if let Some(ref invoke_config) = invoke {
+        for t in &invoke_config.on_done {
+            all_transitions.push(t.clone());
+        }
+        for t in &invoke_config.on_error {
+            all_transitions.push(t.clone());
+        }
+    }
 
     Ok(StateNode {
         name: name.to_string(),
@@ -800,6 +865,7 @@ fn extract_state_node(
         node_type,
         tags,
         invoke,
+        on_done,
     })
 }
 
@@ -848,6 +914,7 @@ fn extract_transition_value(
             target: Some(s.value.to_string()),
             guard: None,
             delay_ms: None,
+            targets: vec![],
             actions: vec![],
             description: None,
         }]),
@@ -876,6 +943,7 @@ fn extract_single_transition(event: &str, expr: &Expression) -> Transition {
             target: Some(s.value.to_string()),
             guard: None,
             delay_ms: None,
+            targets: vec![],
             actions: vec![],
             description: None,
         },
@@ -885,6 +953,7 @@ fn extract_single_transition(event: &str, expr: &Expression) -> Transition {
             target: None,
             guard: None,
             delay_ms: None,
+            targets: vec![],
             actions: vec![],
             description: None,
         },
@@ -912,6 +981,7 @@ fn extract_transition_from_obj(event: &str, obj: &ObjectExpression) -> Transitio
         actions,
         description,
         delay_ms: None,
+        targets: vec![],
     }
 }
 
@@ -931,6 +1001,7 @@ fn extract_always_transitions(arr: &ArrayExpression) -> Result<Vec<Transition>, 
                         target: Some(s.value.to_string()),
                         guard: None,
                         delay_ms: None,
+                        targets: vec![],
                         actions: vec![],
                         description: None,
                     });
@@ -997,6 +1068,7 @@ fn extract_invoke_config(invoke_obj: &ObjectExpression) -> Result<InvokeConfig, 
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }]),
                 Expression::ObjectExpression(obj) => {
                     let t = extract_transition_from_obj(
@@ -1022,6 +1094,7 @@ fn extract_invoke_config(invoke_obj: &ObjectExpression) -> Result<InvokeConfig, 
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }]),
                 Expression::ObjectExpression(obj) => {
                     let t = extract_transition_from_obj(
@@ -1073,19 +1146,26 @@ fn extract_guard_expr(expr: &Expression) -> Option<Guard> {
 
 fn extract_actions_expr(expr: &Expression) -> Vec<Action> {
     match expr {
-        // Single string action: `actions: 'log'`
         Expression::StringLiteral(s) => {
             vec![Action {
                 name: s.value.to_string(),
                 args: vec![],
             }]
         }
-        // Array: `actions: ['log', { type: 'assign', count: 1 }]`
         Expression::ArrayExpression(arr) => arr
             .elements
             .iter()
             .filter_map(|elem| extract_action_from_element(elem))
             .collect(),
+        Expression::CallExpression(call) => {
+            if is_assign_call(call) {
+                extract_assign_action(call)
+                    .map(|a| vec![a])
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            }
+        }
         _ => vec![],
     }
 }
@@ -1117,6 +1197,58 @@ fn extract_action_from_element(elem: &ArrayExpressionElement) -> Option<Action> 
                 .collect();
             Some(Action { name, args })
         }
+        Expression::CallExpression(call) if is_assign_call(call) => extract_assign_action(call),
         _ => None,
+    }
+}
+
+fn is_assign_call(call: &CallExpression) -> bool {
+    match &call.callee {
+        // assign(...)
+        callee if callee.is_specific_id("assign") => true,
+        _ => false,
+    }
+}
+
+fn extract_assign_action(call: &CallExpression) -> Option<Action> {
+    let arg = call.arguments.first()?.as_expression()?;
+    let obj = match arg {
+        Expression::ObjectExpression(o) => o,
+        _ => return None,
+    };
+    let mut args: Vec<serde_json::Value> = Vec::new();
+    for p in obj.properties.iter() {
+        let op = match p {
+            ObjectPropertyKind::ObjectProperty(op) => op,
+            _ => continue,
+        };
+        let key = property_key_name(&op.key)?;
+        let val = match &op.value {
+            // Only extract literal values; skip functions/expressions
+            expr if is_literal_expression(expr) => expr_to_type_and_value(expr).1,
+            _ => continue,
+        };
+        args.push(serde_json::json!(key));
+        args.push(val);
+    }
+    if args.is_empty() {
+        return None;
+    }
+    Some(Action {
+        name: "assign".into(),
+        args,
+    })
+}
+
+fn is_literal_expression(expr: &Expression) -> bool {
+    match expr {
+        Expression::StringLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_) => true,
+        Expression::UnaryExpression(unary) if unary.operator == UnaryOperator::UnaryNegation => {
+            matches!(&unary.argument, arg if is_literal_expression(arg))
+        }
+        _ => false,
     }
 }

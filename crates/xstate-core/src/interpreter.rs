@@ -1,9 +1,39 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use xstate_ir::{Machine, StateNode, StateType};
+use xstate_ir::{Action, Machine, StateNode, StateType};
 
 use crate::clock::Clock;
 use crate::state_value::StateValue;
+
+fn run_action(
+    action: &Action,
+    event_payload: &serde_json::Value,
+    context: &mut serde_json::Value,
+    actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+) {
+    actions(&action.name, &action.args, event_payload);
+    if action.name == "assign" {
+        let chunks = action.args.chunks(2);
+        for chunk in chunks {
+            if chunk.len() == 2 {
+                if let Some(key_str) = chunk[0].as_str() {
+                    if let Some(obj) = context.as_object_mut() {
+                        obj.insert(key_str.to_string(), chunk[1].clone());
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn run_action_by_name(
+    action_name: &str,
+    event_payload: &serde_json::Value,
+    _context: &mut serde_json::Value,
+    actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+) {
+    actions(action_name, &[], event_payload);
+}
 
 pub struct Interpreter {
     machine: Machine,
@@ -203,11 +233,40 @@ impl Interpreter {
                     None => break,
                 }
             }
+            for _ in 0..10 {
+                match self.check_completion(&current, context, guards, actions, clock) {
+                    Some(completed_state) => {
+                        current = completed_state;
+                        for _ in 0..10 {
+                            match self.resolve_always(&current, context, guards, actions, clock) {
+                                Some(always_state) => current = always_state,
+                                None => break,
+                            }
+                        }
+                    }
+                    None => break,
+                }
+            }
         } else {
             for _ in 0..10 {
                 match self.resolve_after(&current, context, guards, actions, clock) {
                     Some(after_state) => {
                         current = after_state;
+                        changed = true;
+                        for _ in 0..10 {
+                            match self.resolve_always(&current, context, guards, actions, clock) {
+                                Some(always_state) => current = always_state,
+                                None => break,
+                            }
+                        }
+                    }
+                    None => break,
+                }
+            }
+            for _ in 0..10 {
+                match self.check_completion(&current, context, guards, actions, clock) {
+                    Some(completed_state) => {
+                        current = completed_state;
                         changed = true;
                         for _ in 0..10 {
                             match self.resolve_always(&current, context, guards, actions, clock) {
@@ -313,15 +372,25 @@ impl Interpreter {
                     }
                     for n in path[common_prefix..].iter().rev() {
                         for action_name in &n.exit {
-                            actions(action_name, &[], &serde_json::Value::Null);
+                            run_action_by_name(
+                                action_name,
+                                &serde_json::Value::Null,
+                                context,
+                                actions,
+                            );
                         }
                     }
                     for action in &transition.actions {
-                        actions(&action.name, &action.args, &serde_json::Value::Null);
+                        run_action(action, &serde_json::Value::Null, context, actions);
                     }
                     for n in &target_path[common_prefix..] {
                         for action_name in &n.entry {
-                            actions(action_name, &[], &serde_json::Value::Null);
+                            run_action_by_name(
+                                action_name,
+                                &serde_json::Value::Null,
+                                context,
+                                actions,
+                            );
                         }
                         self.entry_times.borrow_mut().insert(n.name.clone(), now);
                     }
@@ -337,6 +406,213 @@ impl Interpreter {
             StateValue::Parallel { .. } => true,
             StateValue::Compound { child, .. } => self.contains_parallel(child),
             _ => false,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn check_completion(
+        &self,
+        state: &StateValue,
+        context: &mut serde_json::Value,
+        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
+    ) -> Option<StateValue> {
+        let path = self.find_full_path(state);
+        if path.is_empty() {
+            return None;
+        }
+        for i in (0..path.len().saturating_sub(1)).rev() {
+            let parent = path[i];
+            if parent.on_done.is_empty() {
+                continue;
+            }
+
+            let is_complete = match parent.node_type {
+                StateType::Compound => path
+                    .get(i + 1)
+                    .is_some_and(|child| child.node_type == StateType::Final),
+                StateType::Parallel => {
+                    if let Some(parallel_value) = self.extract_state_value_at(state, i, &path) {
+                        self.is_parallel_value_final(&parallel_value)
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            };
+
+            if !is_complete {
+                continue;
+            }
+
+            for transition in &parent.on_done {
+                if let Some(ref guard) = transition.guard {
+                    if !guards(&guard.name, context, &serde_json::Value::Null) {
+                        continue;
+                    }
+                }
+
+                if !transition.targets.is_empty() {
+                    if let Some((target_path, target_value)) =
+                        self.build_multi_target(&transition.targets)
+                    {
+                        let common_prefix = path
+                            .iter()
+                            .zip(target_path.iter())
+                            .take_while(|(s, t)| s.name == t.name)
+                            .count();
+
+                        for n in path[common_prefix..].iter().rev() {
+                            for action_name in &n.exit {
+                                run_action_by_name(
+                                    action_name,
+                                    &serde_json::Value::Null,
+                                    context,
+                                    actions,
+                                );
+                            }
+                        }
+
+                        let now = clock.now_ms();
+                        for n in &target_path[common_prefix..] {
+                            self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                        }
+
+                        for action in &transition.actions {
+                            run_action(action, &serde_json::Value::Null, context, actions);
+                        }
+
+                        for n in &target_path[common_prefix..] {
+                            for action_name in &n.entry {
+                                run_action_by_name(
+                                    action_name,
+                                    &serde_json::Value::Null,
+                                    context,
+                                    actions,
+                                );
+                            }
+                        }
+
+                        return Some(target_value);
+                    }
+                } else if let Some(ref target_name) = transition.target {
+                    if let Some((target_path, target_value)) = self.build_target(target_name) {
+                        let common_prefix = path
+                            .iter()
+                            .zip(target_path.iter())
+                            .take_while(|(s, t)| s.name == t.name)
+                            .count();
+
+                        for n in path[common_prefix..].iter().rev() {
+                            for action_name in &n.exit {
+                                run_action_by_name(
+                                    action_name,
+                                    &serde_json::Value::Null,
+                                    context,
+                                    actions,
+                                );
+                            }
+                        }
+
+                        let now = clock.now_ms();
+                        for n in &target_path[common_prefix..] {
+                            self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                        }
+
+                        for action in &transition.actions {
+                            run_action(action, &serde_json::Value::Null, context, actions);
+                        }
+
+                        for n in &target_path[common_prefix..] {
+                            for action_name in &n.entry {
+                                run_action_by_name(
+                                    action_name,
+                                    &serde_json::Value::Null,
+                                    context,
+                                    actions,
+                                );
+                            }
+                        }
+
+                        return Some(target_value);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn extract_state_value_at(
+        &self,
+        state: &StateValue,
+        target_index: usize,
+        _path: &[&StateNode],
+    ) -> Option<StateValue> {
+        let mut current = state.clone();
+        for i in 0..=target_index {
+            match &current {
+                StateValue::Compound { child, .. } => {
+                    if i == target_index {
+                        return Some(*child.clone());
+                    }
+                    current = *child.clone();
+                }
+                StateValue::Parallel { regions } => {
+                    return Some(StateValue::Parallel {
+                        regions: regions.clone(),
+                    });
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+
+    fn is_parallel_value_final(&self, value: &StateValue) -> bool {
+        match value {
+            StateValue::Parallel { regions } => {
+                if regions.is_empty() {
+                    return false;
+                }
+                regions.iter().all(|(region_name, region_value)| {
+                    self.is_region_value_final(region_name, region_value)
+                })
+            }
+            _ => false,
+        }
+    }
+
+    fn is_region_value_final(&self, region_name: &str, value: &StateValue) -> bool {
+        let region_node = Self::find_node_path_in(&self.machine.states, region_name)
+            .and_then(|p| p.last().copied());
+        if let Some(node) = region_node {
+            self.check_child_final(value, node)
+        } else {
+            false
+        }
+    }
+
+    fn check_child_final(&self, value: &StateValue, parent: &StateNode) -> bool {
+        match value {
+            StateValue::Atomic(name) => parent
+                .children
+                .iter()
+                .any(|c| c.name == *name && c.node_type == StateType::Final),
+            StateValue::Compound { state, child } => {
+                if let Some(node) = parent.children.iter().find(|c| c.name == *state) {
+                    self.check_child_final(child, node)
+                } else {
+                    false
+                }
+            }
+            StateValue::Parallel { regions } => regions.iter().all(|(name, child_value)| {
+                if let Some(node) = parent.children.iter().find(|c| c.name == *name) {
+                    self.check_child_final(child_value, node)
+                } else {
+                    false
+                }
+            }),
         }
     }
 
@@ -550,18 +826,18 @@ impl Interpreter {
                     .borrow_mut()
                     .insert(target.name.clone(), now);
                 for action_name in &node.exit {
-                    actions(action_name, &[], event_payload);
+                    run_action_by_name(action_name, event_payload, context, actions);
                 }
                 for action in &transition.actions {
-                    actions(&action.name, &action.args, event_payload);
+                    run_action(action, event_payload, context, actions);
                 }
                 for action_name in &target.entry {
-                    actions(action_name, &[], event_payload);
+                    run_action_by_name(action_name, event_payload, context, actions);
                 }
                 return Some(target_value);
             } else {
                 for action in &transition.actions {
-                    actions(&action.name, &action.args, event_payload);
+                    run_action(action, event_payload, context, actions);
                 }
                 return Some(current_value.clone());
             }
@@ -641,7 +917,47 @@ impl Interpreter {
                     }
                 }
 
-                if let Some(ref target_name) = transition.target {
+                if !transition.targets.is_empty() {
+                    let (target_path, target_value) =
+                        self.build_multi_target(&transition.targets)?;
+
+                    let common_prefix = path
+                        .iter()
+                        .zip(target_path.iter())
+                        .take_while(|(s, t)| s.name == t.name)
+                        .count();
+
+                    if common_prefix < path.len() {
+                        for i in common_prefix..path.len() {
+                            if i > 0 {
+                                self.record_history_for_node(path[i - 1], path);
+                            }
+                        }
+                    }
+
+                    let now = clock.now_ms();
+                    for n in &target_path[common_prefix..] {
+                        self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                    }
+
+                    for n in path[common_prefix..].iter().rev() {
+                        for action_name in &n.exit {
+                            run_action_by_name(action_name, event_payload, context, actions);
+                        }
+                    }
+
+                    for action in &transition.actions {
+                        run_action(action, event_payload, context, actions);
+                    }
+
+                    for n in &target_path[common_prefix..] {
+                        for action_name in &n.entry {
+                            run_action_by_name(action_name, event_payload, context, actions);
+                        }
+                    }
+
+                    return Some(target_value);
+                } else if let Some(ref target_name) = transition.target {
                     let (target_path, target_value) = self.build_target(target_name)?;
 
                     let common_prefix = path
@@ -680,24 +996,24 @@ impl Interpreter {
 
                     for n in path[common_prefix..].iter().rev() {
                         for action_name in &n.exit {
-                            actions(action_name, &[], event_payload);
+                            run_action_by_name(action_name, event_payload, context, actions);
                         }
                     }
 
                     for action in &transition.actions {
-                        actions(&action.name, &action.args, event_payload);
+                        run_action(action, event_payload, context, actions);
                     }
 
                     for n in &target_path[common_prefix..] {
                         for action_name in &n.entry {
-                            actions(action_name, &[], event_payload);
+                            run_action_by_name(action_name, event_payload, context, actions);
                         }
                     }
 
                     return Some(target_value);
                 } else {
                     for action in &transition.actions {
-                        actions(&action.name, &action.args, event_payload);
+                        run_action(action, event_payload, context, actions);
                     }
                     return Some(current_state.clone());
                 }
@@ -753,6 +1069,59 @@ impl Interpreter {
         let value = self.state_value_from_path(&path);
         let mut full_path = path.clone();
         self.expand_initial_path(leaf, &mut full_path);
+        Some((full_path, value))
+    }
+
+    fn build_multi_target(&self, target_names: &[String]) -> Option<(Vec<&StateNode>, StateValue)> {
+        let mut results: Vec<(Vec<&StateNode>, StateValue)> = Vec::new();
+        for name in target_names {
+            results.push(self.build_target(name)?);
+        }
+        if results.is_empty() {
+            return None;
+        }
+
+        let first_path = &results[0].0;
+        let mut common_prefix_len = first_path.len();
+        for (path, _) in &results[1..] {
+            let mut i = 0;
+            while i < common_prefix_len && i < path.len() && first_path[i].name == path[i].name {
+                i += 1;
+            }
+            common_prefix_len = i;
+        }
+
+        let common_ancestor_path = first_path[..common_prefix_len].to_vec();
+        let mut full_path = common_ancestor_path.clone();
+
+        let mut regions = Vec::new();
+        for (path, _) in &results {
+            let region_name = path[common_prefix_len].name.clone();
+            let region_node = path[common_prefix_len];
+            let region_value = self.resolve_initial_value(region_node);
+            full_path.push(region_node);
+            let mut region_full_path = vec![region_node];
+            self.expand_initial_path(region_node, &mut region_full_path);
+            for n in &region_full_path[1..] {
+                full_path.push(*n);
+            }
+            regions.push((region_name, region_value));
+        }
+
+        let parallel_child = StateValue::Parallel { regions };
+        let value = if common_ancestor_path.is_empty() {
+            parallel_child
+        } else {
+            let mut value = parallel_child;
+            for ancestor in common_ancestor_path.iter().rev() {
+                value = StateValue::Compound {
+                    state: ancestor.name.clone(),
+                    child: Box::new(value),
+                };
+            }
+            value
+        };
+
         Some((full_path, value))
     }
 
@@ -1047,11 +1416,13 @@ mod tests {
                         }],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "active".into(),
@@ -1069,11 +1440,13 @@ mod tests {
                         }],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         }
@@ -1183,11 +1556,13 @@ mod tests {
                         }],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "processing".into(),
@@ -1213,11 +1588,13 @@ mod tests {
                                 }],
                                 description: None,
                                 delay_ms: None,
+                                targets: vec![],
                             }],
                             children: vec![],
                             node_type: StateType::Atomic,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         },
                         IrStateNode {
                             name: "capture".into(),
@@ -1232,16 +1609,19 @@ mod tests {
                                 actions: vec![],
                                 description: None,
                                 delay_ms: None,
+                                targets: vec![],
                             }],
                             children: vec![],
                             node_type: StateType::Atomic,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "done".into(),
@@ -1254,6 +1634,7 @@ mod tests {
                     node_type: StateType::Final,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         }
@@ -1417,11 +1798,13 @@ mod tests {
                     }],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -1528,11 +1911,13 @@ mod tests {
                             actions: vec![],
                             description: None,
                             delay_ms: None,
+                            targets: vec![],
                         }],
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     },
                     IrStateNode {
                         name: "rendering".into(),
@@ -1547,11 +1932,13 @@ mod tests {
                             actions: vec![],
                             description: None,
                             delay_ms: None,
+                            targets: vec![],
                         }],
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     },
                     IrStateNode {
                         name: "loaded".into(),
@@ -1564,6 +1951,7 @@ mod tests {
                         node_type: StateType::Atomic,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     },
                     IrStateNode {
                         name: "rendered".into(),
@@ -1576,11 +1964,13 @@ mod tests {
                         node_type: StateType::Atomic,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     },
                 ],
                 node_type: StateType::Parallel,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         }
     }
@@ -1616,14 +2006,17 @@ mod tests {
                         node_type: StateType::Atomic,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 }],
                 node_type: StateType::Compound,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -1664,11 +2057,13 @@ mod tests {
                         }],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "end".into(),
@@ -1681,6 +2076,7 @@ mod tests {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -1731,6 +2127,7 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![IrStateNode {
                         name: "inner".into(),
@@ -1743,10 +2140,12 @@ mod tests {
                         node_type: StateType::Atomic,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "other".into(),
@@ -1759,6 +2158,7 @@ mod tests {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -1812,11 +2212,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "b".into(),
@@ -1829,6 +2231,7 @@ mod tests {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -1881,11 +2284,13 @@ mod tests {
                         }],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "b".into(),
@@ -1900,11 +2305,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -1963,11 +2370,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "auto".into(),
@@ -1982,11 +2391,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "done".into(),
@@ -1999,6 +2410,7 @@ mod tests {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -2050,11 +2462,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "check".into(),
@@ -2071,11 +2485,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "done".into(),
@@ -2088,6 +2504,7 @@ mod tests {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -2173,6 +2590,7 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![
                         IrStateNode {
@@ -2185,12 +2603,14 @@ mod tests {
                                 actions: vec![],
                                 description: None,
                                 delay_ms: None,
+                                targets: vec![],
                             }],
                             children: vec![],
                             entry: vec![],
                             exit: vec![],
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                             description: None,
                             initial: None,
                         },
@@ -2203,6 +2623,7 @@ mod tests {
                             exit: vec![],
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                             description: None,
                             initial: None,
                         },
@@ -2215,6 +2636,7 @@ mod tests {
                             exit: vec![],
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                             description: None,
                             initial: None,
                         },
@@ -2222,6 +2644,7 @@ mod tests {
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "other".into(),
@@ -2236,11 +2659,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -2316,6 +2741,7 @@ mod tests {
                         event: "done.invoke.loader".into(),
                         target: Some("loaded".into()),
                         delay_ms: None,
+                        targets: vec![],
                         guard: None,
                         actions: vec![],
                         description: None,
@@ -2326,6 +2752,7 @@ mod tests {
                         on_done: vec![],
                         on_error: vec![],
                     }),
+                    on_done: vec![],
                     children: vec![],
                     entry: vec![],
                     exit: vec![],
@@ -2338,6 +2765,7 @@ mod tests {
                     node_type: StateType::Atomic,
                     transitions: vec![],
                     invoke: None,
+                    on_done: vec![],
                     children: vec![],
                     entry: vec![],
                     exit: vec![],
@@ -2386,6 +2814,7 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![
                         IrStateNode {
@@ -2401,11 +2830,13 @@ mod tests {
                                 actions: vec![],
                                 description: None,
                                 delay_ms: None,
+                                targets: vec![],
                             }],
                             children: vec![],
                             node_type: StateType::Atomic,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         },
                         IrStateNode {
                             name: "second".into(),
@@ -2418,6 +2849,7 @@ mod tests {
                             node_type: StateType::Atomic,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         },
                         IrStateNode {
                             name: "hist".into(),
@@ -2430,11 +2862,13 @@ mod tests {
                             node_type: StateType::History,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "off".into(),
@@ -2449,11 +2883,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         }
@@ -2544,11 +2980,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "parent".into(),
@@ -2569,6 +3007,7 @@ mod tests {
                             node_type: StateType::Atomic,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         },
                         IrStateNode {
                             name: "b".into(),
@@ -2581,11 +3020,13 @@ mod tests {
                             node_type: StateType::Atomic,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -2635,11 +3076,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "a".into(),
@@ -2666,14 +3109,17 @@ mod tests {
                             node_type: StateType::Atomic,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         }],
                         node_type: StateType::Compound,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -2729,6 +3175,7 @@ mod tests {
                         }],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![
                         IrStateNode {
@@ -2750,6 +3197,7 @@ mod tests {
                                     node_type: StateType::Atomic,
                                     tags: vec![],
                                     invoke: None,
+                                    on_done: vec![],
                                 },
                                 IrStateNode {
                                     name: "a2".into(),
@@ -2762,11 +3210,13 @@ mod tests {
                                     node_type: StateType::Atomic,
                                     tags: vec![],
                                     invoke: None,
+                                    on_done: vec![],
                                 },
                             ],
                             node_type: StateType::Compound,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         },
                         IrStateNode {
                             name: "b".into(),
@@ -2787,6 +3237,7 @@ mod tests {
                                     node_type: StateType::Atomic,
                                     tags: vec![],
                                     invoke: None,
+                                    on_done: vec![],
                                 },
                                 IrStateNode {
                                     name: "b2".into(),
@@ -2799,16 +3250,19 @@ mod tests {
                                     node_type: StateType::Atomic,
                                     tags: vec![],
                                     invoke: None,
+                                    on_done: vec![],
                                 },
                             ],
                             node_type: StateType::Compound,
                             tags: vec![],
                             invoke: None,
+                            on_done: vec![],
                         },
                     ],
                     node_type: StateType::Parallel,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 IrStateNode {
                     name: "off".into(),
@@ -2821,6 +3275,7 @@ mod tests {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -2909,11 +3364,13 @@ mod tests {
                                     }],
                                     description: None,
                                     delay_ms: None,
+                                    targets: vec![],
                                 }],
                                 children: vec![],
                                 node_type: StateType::Atomic,
                                 tags: vec![],
                                 invoke: None,
+                                on_done: vec![],
                             },
                             IrStateNode {
                                 name: "elsewhere".into(),
@@ -2926,19 +3383,23 @@ mod tests {
                                 node_type: StateType::Atomic,
                                 tags: vec![],
                                 invoke: None,
+                                on_done: vec![],
                             },
                         ],
                         node_type: StateType::Compound,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 }],
                 node_type: StateType::Parallel,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -2990,5 +3451,114 @@ mod tests {
         assert!(actions_log.contains(&"exit_deep".to_string()));
         assert!(actions_log.contains(&"go".to_string()));
         assert!(actions_log.contains(&"enter_elsewhere".to_string()));
+    }
+
+    #[test]
+    fn ondone_compound_completion() {
+        let machine = Machine {
+            id: "completion".into(),
+            initial: "loading".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                IrStateNode {
+                    name: "loading".into(),
+                    description: None,
+                    initial: Some("fetch".into()),
+                    entry: vec![],
+                    exit: vec!["exit_loading".into()],
+                    transitions: vec![],
+                    children: vec![
+                        IrStateNode {
+                            name: "fetch".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![Transition {
+                                event: "DONE".into(),
+                                target: Some("complete".into()),
+                                guard: None,
+                                actions: vec![],
+                                description: None,
+                                delay_ms: None,
+                                targets: vec![],
+                            }],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                            on_done: vec![],
+                        },
+                        IrStateNode {
+                            name: "complete".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::Final,
+                            tags: vec![],
+                            invoke: None,
+                            on_done: vec![],
+                        },
+                    ],
+                    node_type: StateType::Compound,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![Transition {
+                        event: String::new(),
+                        target: Some("loaded".into()),
+                        targets: vec![],
+                        guard: None,
+                        actions: vec![Action {
+                            name: "on_loading_done".into(),
+                            args: vec![],
+                        }],
+                        description: None,
+                        delay_ms: None,
+                    }],
+                },
+                IrStateNode {
+                    name: "loaded".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec!["enter_loaded".into()],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                },
+            ],
+        };
+
+        let interpreter = Interpreter::new(machine);
+        let state = interpreter.initial_state();
+
+        let mut context = interpreter.initial_context();
+        let mut actions_log: Vec<String> = Vec::new();
+        let mut actions = |name: &str, _args: &[serde_json::Value], _: &serde_json::Value| {
+            actions_log.push(name.to_string());
+        };
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+
+        let new_state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "DONE"}),
+                &mut context,
+                &guards,
+                &mut actions,
+                &MockClock::new(0),
+            )
+            .unwrap();
+
+        assert_eq!(new_state, StateValue::Atomic("loaded".into()));
+        assert!(actions_log.contains(&"exit_loading".to_string()));
+        assert!(actions_log.contains(&"on_loading_done".to_string()));
+        assert!(actions_log.contains(&"enter_loaded".to_string()));
     }
 }

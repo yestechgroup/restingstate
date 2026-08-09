@@ -121,23 +121,26 @@ function irToXstateConfig(ir) {
       const alwaysTransitions = [];
       for (const t of state.transitions) {
         const isAlways = t.event === "" || t.event === undefined;
-        const entry = {};
-        if (t.target) {
-          entry.target = resolveTarget(t.target);
-        }
-        if (t.guard) {
-          entry.guard = t.guard.name;
-        }
-        if (t.actions && t.actions.length > 0) {
-          entry.actions = t.actions.map((a) => a.name);
-        }
-        if (isAlways) {
-          alwaysTransitions.push(entry);
-        } else {
-          if (!on[t.event]) {
-            on[t.event] = [];
+        const targets = t.targets && t.targets.length > 0 ? t.targets : (t.target ? [t.target] : []);
+        for (const tg of targets) {
+          const entry = {};
+          if (tg) {
+            entry.target = resolveTarget(tg);
           }
-          on[t.event].push(entry);
+          if (t.guard) {
+            entry.guard = t.guard.name;
+          }
+          if (t.actions && t.actions.length > 0) {
+            entry.actions = t.actions.map((a) => a.name);
+          }
+          if (isAlways) {
+            alwaysTransitions.push(entry);
+          } else {
+            if (!on[t.event]) {
+              on[t.event] = [];
+            }
+            on[t.event].push(entry);
+          }
         }
       }
       for (const [event, transitions] of Object.entries(on)) {
@@ -169,6 +172,16 @@ function irToXstateConfig(ir) {
       if (state.initial) {
         result.initial = state.initial;
       }
+    }
+
+    if (state.on_done && state.on_done.length > 0) {
+      result.onDone = state.on_done.map((t) => {
+        const entry = {};
+        if (t.target) entry.target = resolveTarget(t.target);
+        if (t.guard) entry.guard = t.guard.name;
+        if (t.actions && t.actions.length > 0) entry.actions = t.actions.map((a) => a.name);
+        return entry;
+      });
     }
 
     if (state.invoke) {

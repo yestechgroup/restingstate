@@ -300,6 +300,7 @@ const ASSERT_METHOD_RE = /^\.(?:toEqual|toBe|toStrictEqual|toMatchObject)\s*\(/;
 
 function scanExpectedValues(blockText) {
   const expects = [];
+  const contexts = [];
   EXPECT_RE.lastIndex = 0;
   let m;
   while ((m = EXPECT_RE.exec(blockText)) !== null) {
@@ -307,29 +308,84 @@ function scanExpectedValues(blockText) {
     const closeIdx = findMatchingParen(blockText, openIdx);
     if (closeIdx < 0) continue;
     const arg = blockText.slice(openIdx + 1, closeIdx).trim();
-    if (!/\.value\s*(?:!| as [\w.]+)?\s*$/.test(arg)) continue;
-    const rest = blockText.slice(closeIdx + 1);
-    const am = rest.match(ASSERT_METHOD_RE);
-    if (!am) continue;
-    const assertOpen = closeIdx + 1 + am[0].indexOf("(");
-    const assertClose = findMatchingParen(blockText, assertOpen);
-    if (assertClose < 0) continue;
-    const literal = blockText.slice(assertOpen + 1, assertClose);
-    const value = parseJsLiteral(literal);
-    if (value === undefined) continue;
-    expects.push({ pos: m.index, value });
-    EXPECT_RE.lastIndex = assertClose + 1;
+    if (/\.value\s*(?:!| as [\w.]+)?\s*$/.test(arg)) {
+      const rest = blockText.slice(closeIdx + 1);
+      const am = rest.match(ASSERT_METHOD_RE);
+      if (!am) continue;
+      const assertOpen = closeIdx + 1 + am[0].indexOf("(");
+      const assertClose = findMatchingParen(blockText, assertOpen);
+      if (assertClose < 0) continue;
+      const literal = blockText.slice(assertOpen + 1, assertClose);
+      const value = parseJsLiteral(literal);
+      if (value === undefined) continue;
+      expects.push({ pos: m.index, value });
+      EXPECT_RE.lastIndex = assertClose + 1;
+    } else if (/\.context\s*$/.test(arg)) {
+      const rest = blockText.slice(closeIdx + 1);
+      const am = rest.match(ASSERT_METHOD_RE);
+      if (!am) continue;
+      const assertOpen = closeIdx + 1 + am[0].indexOf("(");
+      const assertClose = findMatchingParen(blockText, assertOpen);
+      if (assertClose < 0) continue;
+      const literal = blockText.slice(assertOpen + 1, assertClose);
+      const value = parseJsLiteral(literal);
+      if (value === undefined) continue;
+      contexts.push({ pos: m.index, value });
+      EXPECT_RE.lastIndex = assertClose + 1;
+    }
   }
-  return expects;
+  return { expects, contexts };
 }
 
 // ---------------------------------------------------------------------------
 // Skip rules
 // ---------------------------------------------------------------------------
 
+function hasOnlyNonLiteralAssign(blockText) {
+  const assignRegex = /\bassign\s*\(\s*\{/g;
+  let m;
+  while ((m = assignRegex.exec(blockText)) !== null) {
+    const openBraceIdx = m.index + m[0].length - 1;
+    const closeBraceIdx = findMatchingParen(blockText.replace(/\(/g, '<').replace(/\)/g, '>'), openBraceIdx.replace) 
+    // Manual brace matching for `assign({...})`
+    let braceDepth = 0;
+    let i = openBraceIdx;
+    while (i < blockText.length) {
+      if (blockText[i] === '{') braceDepth++;
+      else if (blockText[i] === '}') {
+        braceDepth--;
+        if (braceDepth === 0) break;
+      }
+      i++;
+    }
+    if (i >= blockText.length) continue;
+    const objText = blockText.slice(openBraceIdx, i + 1);
+    // Remove outer braces
+    const inner = objText.slice(1, -1).trim();
+    if (!inner) return true; // empty object, no literal values
+    const parts = splitTopLevel(inner, ',');
+    let hasLiteral = false;
+    for (const part of parts) {
+      const m2 = part.match(/^\s*(?:['"`]([^'"`]+)['"`]|([A-Za-z_$][\w$]*))\s*:\s*([\s\S]*)$/);
+      if (!m2) continue;
+      const valExpr = (m2[3] || '').trim();
+      // Check if value is a literal (number, string, boolean, null, undefined)
+      if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(valExpr) ||
+          /^(true|false|null|undefined)$/.test(valExpr) ||
+          /^['"`][^'"]*['"`]$/.test(valExpr) ||
+          /^{[\s\S]*}$/.test(valExpr) || 
+          /^\[[\s\S]*\]$/.test(valExpr)) {
+        hasLiteral = true;
+        break;
+      }
+    }
+    if (hasLiteral) return false; // has at least one literal value
+  }
+  return false; // no assign calls or all have literals
+}
+
 const SKIP_PATTERNS = [
   [/trackEntries\s*\(/, "trackEntries"],
-  [/\bassign\s*\(/, "assign"],
   [/guard\s*:\s*\(/, "inline guards"],
   [/guard\s*:\s*[A-Za-z_$][\w$]*\s*=>/, "inline guards"],
   [/\bvi\.fn\s*\(/, "vi.fn mocks"],
@@ -340,18 +396,18 @@ const SKIP_PATTERNS = [
   [/getSnapshot\(\)\.children\.[A-Za-z_$][\w$]*\.send\(/, "child actor send"],
   [/\b(?:initialTransition|transition)\s*\(/, "transition helpers"],
   [/type\s*:\s*['"`]history['"`][^}]*?target\s*:/, "history with target"],
-  // Absolute state-node targets (`target: '#x'` or shorthand `EVENT: '#x'`).
-  // `to:`/`type:`/`id:`/`route:`/`initial:` values are not state targets.
   [/[\s{};,](?!to\s*:|route\s*:|type\s*:|id\s*:|initial\s*:)[A-Za-z_$][\w$]*\s*:\s*['"`]#[^'"`]+['"`]/, "absolute targets"],
   [/\bafter\s*:/, "after (timing)"],
-  // `onDone` on a state node (parallel completion) is not extracted.
-  [/\bonDone\s*:/, "onDone (final completion)"],
+  // Skip assign only when all values are non-literal (function-form assign)
+  [/assign\s*\(\s*\(\s*\{/, "assign (function form)"],
 ];
 
 function findSkipReason(blockText) {
   for (const [re, reason] of SKIP_PATTERNS) {
     if (re.test(blockText)) return reason;
   }
+  // Nuanced assign check: skip only if ALL assign calls have no literal values
+  if (hasOnlyNonLiteralAssign(blockText)) return "assign (no literal values)";
   return null;
 }
 
@@ -443,15 +499,18 @@ function irToXstateConfig(ir) {
       const alwaysTransitions = [];
       for (const t of state.transitions) {
         const isAlways = t.event === "" || t.event === undefined;
-        const entry = {};
-        if (t.target) entry.target = resolveTarget(t.target, path);
-        if (t.guard) entry.guard = t.guard.name;
-        if (t.actions && t.actions.length > 0) entry.actions = t.actions.map((a) => a.name);
-        if (isAlways) {
-          alwaysTransitions.push(entry);
-        } else {
-          if (!on[t.event]) on[t.event] = [];
-          on[t.event].push(entry);
+        const targets = t.targets && t.targets.length > 0 ? t.targets : (t.target ? [t.target] : []);
+        for (const tg of targets) {
+          const entry = {};
+          if (tg) entry.target = resolveTarget(tg, path);
+          if (t.guard) entry.guard = t.guard.name;
+          if (t.actions && t.actions.length > 0) entry.actions = t.actions.map((a) => a.name);
+          if (isAlways) {
+            alwaysTransitions.push(entry);
+          } else {
+            if (!on[t.event]) on[t.event] = [];
+            on[t.event].push(entry);
+          }
         }
       }
       for (const [event, transitions] of Object.entries(on)) {
@@ -608,21 +667,29 @@ function buildInitialContext(machineIr) {
 
 function buildVector({ block, machineIr, fileBase, index, skipCompare }) {
   const events = scanEvents(block.text);
-  const expects = scanExpectedValues(block.text);
+  const { expects, contexts } = scanExpectedValues(block.text);
 
   const items = [
     ...events.map((e) => ({ kind: "event", ...e })),
     ...expects.map((e) => ({ kind: "expect", ...e })),
+    ...contexts.map((e) => ({ kind: "context", ...e })),
   ].sort((a, b) => a.pos - b.pos);
 
   let initialValue;
   const initialFromAssertion = [];
   const expectedByStep = {};
+  const contextByStep = {};
   let lastEventStep = -1;
 
   for (const item of items) {
     if (item.kind === "event") {
       lastEventStep++;
+      continue;
+    }
+    if (item.kind === "context") {
+      if (lastEventStep >= 0) {
+        contextByStep[lastEventStep] = item.value;
+      }
       continue;
     }
     if (lastEventStep < 0) {
@@ -636,9 +703,6 @@ function buildVector({ block, machineIr, fileBase, index, skipCompare }) {
   const resolvedInitial = machineIr ? resolveInitialStateValue(machineIr) : null;
   if (initialFromAssertion.length > 0) {
     initialValue = initialFromAssertion[0];
-    // If the test asserts a value the extracted IR cannot reproduce (e.g.
-    // regions of a parallel root, which the IR cannot express), fall back to
-    // the machine-resolved value so both runtimes agree.
     if (resolvedInitial !== null && !sameKeySets(resolvedInitial, initialValue)) {
       initialValue = resolvedInitial;
       degradedInitial = true;
@@ -657,16 +721,18 @@ function buildVector({ block, machineIr, fileBase, index, skipCompare }) {
   const initialContext = buildInitialContext(machineIr);
   for (let i = 0; i < events.length; i++) {
     if (i in expectedByStep) {
+      const ctx = i in contextByStep ? contextByStep[i] : initialContext;
       expected.push({
         step: i,
         event: events[i].event,
-        snapshot: { value: expectedByStep[i], context: initialContext },
+        snapshot: { value: expectedByStep[i], context: ctx },
       });
     }
   }
 
   const sendMatches = [...block.text.matchAll(SEND_RE)].length;
   const allEventsParsed = sendMatches === events.length;
+  const hasContextAssertions = Object.keys(contextByStep).length > 0;
   const full =
     !skipCompare &&
     !degradedInitial &&
@@ -683,7 +749,7 @@ function buildVector({ block, machineIr, fileBase, index, skipCompare }) {
     },
     expected,
     ...(skipCompare ? { skip_compare: true } : {}),
-    extraction_status: full ? "full" : "partial",
+    extraction_status: full ? "full" : (hasContextAssertions ? "partial" : "partial"),
   };
 }
 
@@ -741,7 +807,7 @@ function processFile(filePath, binary) {
       }
 
       const events = scanEvents(block.text);
-      const expects = scanExpectedValues(block.text);
+      const { expects } = scanExpectedValues(block.text);
       if (events.length === 0 && expects.length === 0) {
         skipped.push({ block, reason: "no events found" });
         continue;

@@ -6,6 +6,8 @@ pub struct Transition {
     #[serde(default)]
     pub target: Option<String>,
     #[serde(default)]
+    pub targets: Vec<String>,
+    #[serde(default)]
     pub guard: Option<Guard>,
     #[serde(default)]
     pub actions: Vec<Action>,
@@ -72,6 +74,7 @@ mod tests {
             actions: vec![],
             description: None,
             delay_ms: None,
+            targets: vec![],
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();
@@ -89,6 +92,7 @@ mod tests {
             actions: vec![],
             description: Some("Submit form if valid".into()),
             delay_ms: None,
+            targets: vec![],
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();
@@ -113,6 +117,7 @@ mod tests {
             ],
             description: None,
             delay_ms: None,
+            targets: vec![],
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();
@@ -131,6 +136,7 @@ mod tests {
             }],
             description: None,
             delay_ms: None,
+            targets: vec![],
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();
@@ -146,6 +152,7 @@ mod tests {
             actions: vec![],
             description: None,
             delay_ms: None,
+            targets: vec![],
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();
@@ -161,6 +168,7 @@ mod tests {
             actions: vec![],
             description: Some("Delayed timeout".into()),
             delay_ms: Some(1000),
+            targets: vec![],
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();
@@ -176,6 +184,7 @@ mod tests {
             actions: vec![],
             description: None,
             delay_ms: Some(0),
+            targets: vec![],
         };
         let json = serde_json::to_string_pretty(&transition).unwrap();
         let round_tripped: Transition = serde_json::from_str(&json).unwrap();

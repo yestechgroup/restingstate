@@ -50,12 +50,12 @@ jobs:
       - name: Build Rust runner
         run: cargo build -p rust-runner --release
 
-      - name: Run compatibility harness
+      - name: Run compatibility harness (hand-crafted vectors)
         run: |
           set -e
           PASS=0
           FAIL=0
-          for tv in tests/compatibility/machines/simple/*.json tests/compatibility/machines/compound/*.json tests/compatibility/machines/guards/*.json; do
+          for tv in tests/compatibility/machines/**/*.json; do
             echo "::group::$(basename $tv)"
             node tests/compatibility/ts-runner.mjs "$tv" > /tmp/js-out.json
             ./target/release/rust-runner "$tv" > /tmp/rs-out.json
@@ -66,6 +66,29 @@ jobs:
             fi
             echo "::endgroup::"
           done
-          echo "Compatibility: $PASS passed, $FAIL failed"
+          echo "Hand-crafted vectors: $PASS passed, $FAIL failed"
           [ "$FAIL" -eq 0 ]
+
+      - name: Extract and validate test vectors
+        run: |
+          set -e
+          for f in initial route transition final deep guards transient parallel after microstep multiple event history stateIn actions assign rehydration; do
+            node tests/compatibility/extract-test-vectors.mjs \
+              "tests/compatibility/xstate-vendor/packages/core/test/${f}.test.ts" 2>&1
+          done
+
+          PASS=0; FAIL=0; CRASH=0
+          for tv in tests/compatibility/vectors/extracted/**/*.json; do
+            echo "::group::$(basename $tv)"
+            node tests/compatibility/ts-runner.mjs "$tv" > /tmp/js-out.json 2>/dev/null || { CRASH=$((CRASH+1)); echo "::endgroup::"; continue; }
+            ./target/release/rust-runner "$tv" > /tmp/rs-out.json 2>/dev/null || { CRASH=$((CRASH+1)); echo "::endgroup::"; continue; }
+            if node tests/compatibility/compare.mjs /tmp/js-out.json /tmp/rs-out.json; then
+              PASS=$((PASS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+            echo "::endgroup::"
+          done
+          echo "Extracted vectors: $PASS passed, $FAIL failed, $CRASH crashed"
+          [ "$FAIL" -eq 0 ] && [ "$CRASH" -eq 0 ]
 

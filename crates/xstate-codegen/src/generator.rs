@@ -296,11 +296,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 StateNode {
                     name: "active".into(),
@@ -315,11 +317,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -368,6 +372,7 @@ mod tests {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![
                     StateNode {
@@ -383,11 +388,13 @@ mod tests {
                             actions: vec![],
                             description: None,
                             delay_ms: None,
+                            targets: vec![],
                         }],
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     },
                     StateNode {
                         name: "stop".into(),
@@ -400,11 +407,13 @@ mod tests {
                         node_type: StateType::Final,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     },
                 ],
                 node_type: StateType::Compound,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -438,6 +447,7 @@ mod tests {
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -484,6 +494,7 @@ mod tests {
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -525,6 +536,7 @@ mod tests {
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -551,11 +563,13 @@ mod tests {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -592,11 +606,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 StateNode {
                     name: "active".into(),
@@ -611,11 +627,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };

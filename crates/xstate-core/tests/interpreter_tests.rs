@@ -24,11 +24,13 @@ fn toggle_machine() -> Machine {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
             StateNode {
                 name: "active".into(),
@@ -43,11 +45,13 @@ fn toggle_machine() -> Machine {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
         ],
     }
@@ -124,11 +128,13 @@ fn toggle_machine_with_count_context() {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
             StateNode {
                 name: "active".into(),
@@ -143,11 +149,13 @@ fn toggle_machine_with_count_context() {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
         ],
     };
@@ -176,6 +184,7 @@ fn traffic_light_compound_state() {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![
                     StateNode {
@@ -191,11 +200,13 @@ fn traffic_light_compound_state() {
                             actions: vec![],
                             description: None,
                             delay_ms: None,
+                            targets: vec![],
                         }],
                         children: vec![],
                         node_type: StateType::Atomic,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     },
                     StateNode {
                         name: "stop".into(),
@@ -208,11 +219,13 @@ fn traffic_light_compound_state() {
                         node_type: StateType::Final,
                         tags: vec![],
                         invoke: None,
+                        on_done: vec![],
                     },
                 ],
                 node_type: StateType::Compound,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
             StateNode {
                 name: "green".into(),
@@ -225,6 +238,7 @@ fn traffic_light_compound_state() {
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
         ],
     };
@@ -316,6 +330,7 @@ fn transition_with_guard() {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     },
                     Transition {
                         event: "SUBMIT".into(),
@@ -324,12 +339,14 @@ fn transition_with_guard() {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     },
                 ],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
             StateNode {
                 name: "submitted".into(),
@@ -342,6 +359,7 @@ fn transition_with_guard() {
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
             StateNode {
                 name: "error".into(),
@@ -354,6 +372,7 @@ fn transition_with_guard() {
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
         ],
     };
@@ -405,11 +424,13 @@ fn entry_exit_actions() {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
             StateNode {
                 name: "active".into(),
@@ -424,11 +445,13 @@ fn entry_exit_actions() {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
         ],
     };
@@ -479,11 +502,13 @@ fn transition_actions_order() {
                     }],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
             StateNode {
                 name: "active".into(),
@@ -496,6 +521,7 @@ fn transition_actions_order() {
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
         ],
     };
@@ -549,6 +575,7 @@ fn parallel_states_initial_value() {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 StateNode {
                     name: "rendering".into(),
@@ -561,11 +588,13 @@ fn parallel_states_initial_value() {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
             node_type: StateType::Parallel,
             tags: vec![],
             invoke: None,
+            on_done: vec![],
         }],
     };
     let interpreter = Interpreter::new(machine);
@@ -600,6 +629,7 @@ fn event_bubbling() {
                     actions: vec![],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![StateNode {
                     name: "child1".into(),
@@ -612,10 +642,12 @@ fn event_bubbling() {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 }],
                 node_type: StateType::Compound,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
             StateNode {
                 name: "other".into(),
@@ -628,6 +660,7 @@ fn event_bubbling() {
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             },
         ],
     };
@@ -678,11 +711,13 @@ fn transition_with_no_target() {
                 }],
                 description: None,
                 delay_ms: None,
+                targets: vec![],
             }],
             children: vec![],
             node_type: StateType::Atomic,
             tags: vec![],
             invoke: None,
+            on_done: vec![],
         }],
     };
     let interpreter = Interpreter::new(machine);
@@ -728,11 +763,13 @@ fn final_state_no_transitions() {
                 actions: vec![],
                 description: None,
                 delay_ms: None,
+                targets: vec![],
             }],
             children: vec![],
             node_type: StateType::Final,
             tags: vec![],
             invoke: None,
+            on_done: vec![],
         }],
     };
     let interpreter = Interpreter::new(machine);
@@ -750,4 +787,78 @@ fn final_state_no_transitions() {
         &MockClock::new(0),
     );
     assert_eq!(result, None);
+}
+
+#[test]
+fn assign_mutates_context() {
+    let machine = Machine {
+        id: "assign".into(),
+        initial: "start".into(),
+        context: ContextSchema {
+            fields: vec![ContextField {
+                name: "count".into(),
+                type_name: "number".into(),
+                default_value: serde_json::json!(0),
+            }],
+        },
+        states: vec![
+            StateNode {
+                name: "start".into(),
+                description: None,
+                initial: None,
+                entry: vec![],
+                exit: vec![],
+                transitions: vec![Transition {
+                    event: "GO".into(),
+                    target: Some("end".into()),
+                    guard: None,
+                    actions: vec![Action {
+                        name: "assign".into(),
+                        args: vec![serde_json::json!("count"), serde_json::json!(42)],
+                    }],
+                    description: None,
+                    delay_ms: None,
+                    targets: vec![],
+                }],
+                children: vec![],
+                node_type: StateType::Atomic,
+                tags: vec![],
+                invoke: None,
+                on_done: vec![],
+            },
+            StateNode {
+                name: "end".into(),
+                description: None,
+                initial: None,
+                entry: vec![],
+                exit: vec![],
+                transitions: vec![],
+                children: vec![],
+                node_type: StateType::Atomic,
+                tags: vec![],
+                invoke: None,
+                on_done: vec![],
+            },
+        ],
+    };
+    let interpreter = Interpreter::new(machine);
+    let state = interpreter.initial_state();
+    let mut context = interpreter.initial_context();
+    assert_eq!(context, serde_json::json!({"count": 0}));
+    let new_state = interpreter
+        .send(
+            &state,
+            &serde_json::json!({"type": "GO"}),
+            &mut context,
+            &|_, _, _| true,
+            &mut |_, _, _| {},
+            &MockClock::new(0),
+        )
+        .unwrap();
+    assert_eq!(new_state, StateValue::Atomic("end".into()));
+    assert_eq!(
+        context,
+        serde_json::json!({"count": 42}),
+        "context should be mutated by assign action"
+    );
 }

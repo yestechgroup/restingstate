@@ -343,11 +343,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 StateNode {
                     name: "active".into(),
@@ -362,11 +364,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         }
@@ -451,11 +455,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 StateNode {
                     name: "poked".into(),
@@ -468,6 +474,7 @@ mod tests {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -504,11 +511,13 @@ mod tests {
                     }],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
         let parent_id = system.spawn(
@@ -545,11 +554,13 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 StateNode {
                     name: "done".into(),
@@ -562,6 +573,7 @@ mod tests {
                     node_type: StateType::Atomic,
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -594,11 +606,13 @@ mod tests {
                     }],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -682,6 +696,7 @@ mod tests {
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
         system.register_machine("childMachine", child_machine);
@@ -709,11 +724,13 @@ mod tests {
                     }],
                     description: None,
                     delay_ms: None,
+                    targets: vec![],
                 }],
                 children: vec![],
                 node_type: StateType::Atomic,
                 tags: vec![],
                 invoke: None,
+                on_done: vec![],
             }],
         };
 
@@ -752,10 +769,12 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 StateNode {
                     name: "end".into(),
@@ -768,6 +787,7 @@ mod tests {
                     children: vec![],
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
@@ -791,10 +811,12 @@ mod tests {
                         actions: vec![],
                         description: None,
                         delay_ms: None,
+                        targets: vec![],
                     }],
                     children: vec![],
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
                 StateNode {
                     name: "completed".into(),
@@ -807,6 +829,7 @@ mod tests {
                     children: vec![],
                     tags: vec![],
                     invoke: None,
+                    on_done: vec![],
                 },
             ],
         };
