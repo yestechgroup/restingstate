@@ -420,7 +420,7 @@ impl Interpreter {
                     }
                     if let Some(ref target_name) = transition.target {
                         let target = transition_scope.iter().find(|n| n.name == *target_name)?;
-                        let target_value = self.resolve_region_value(target);
+                        let target_value = self.resolve_initial_value(target);
                         let now = clock.now_ms();
                         self.entry_times
                             .borrow_mut()
@@ -587,31 +587,18 @@ impl Interpreter {
     }
 
     fn build_target(&self, target_name: &str) -> Option<(Vec<&StateNode>, StateValue)> {
+        if target_name.contains('.') {
+            let parts: Vec<&str> = target_name.split('.').collect();
+            return self.build_target_from_path(&parts);
+        }
+
         let (path_to_named, leaf) = Self::find_node_by_name_in(&self.machine.states, target_name)?;
 
-        if leaf.node_type == StateType::History || leaf.node_type == StateType::DeepHistory {
-            if let Some(parent) = path_to_named.last().and_then(|_| {
-                if path_to_named.len() >= 2 {
-                    Some(path_to_named[path_to_named.len() - 2])
-                } else {
-                    None
-                }
-            }) {
-                if let Some(recorded) = self.history.borrow().get(&parent.name) {
-                    let mut value = recorded.clone();
-                    let mut full_path = Vec::with_capacity(path_to_named.len());
-                    for ancestor in &path_to_named[..path_to_named.len() - 1] {
-                        full_path.push(*ancestor);
-                    }
-                    for ancestor in path_to_named[..path_to_named.len() - 1].iter().rev() {
-                        value = StateValue::Compound {
-                            state: ancestor.name.clone(),
-                            child: Box::new(value),
-                        };
-                    }
-                    return Some((full_path, value));
-                }
-            }
+        if (leaf.node_type == StateType::History || leaf.node_type == StateType::DeepHistory)
+            && path_to_named.len() >= 2
+        {
+            let ancestors = &path_to_named[..path_to_named.len() - 1];
+            return Some(self.resolve_history_target(ancestors));
         }
 
         let value = self.state_value_from_path(&path_to_named);
@@ -620,6 +607,53 @@ impl Interpreter {
         self.expand_initial_path(leaf, &mut full_path);
 
         Some((full_path, value))
+    }
+
+    fn build_target_from_path(&self, parts: &[&str]) -> Option<(Vec<&StateNode>, StateValue)> {
+        let first = parts.first()?;
+        let root = self.machine.states.iter().find(|s| s.name == *first)?;
+        let mut path: Vec<&StateNode> = vec![root];
+        for part in &parts[1..] {
+            let parent = *path.last()?;
+            let child = parent.children.iter().find(|c| c.name == *part)?;
+            path.push(child);
+        }
+        let leaf = *path.last()?;
+
+        if (leaf.node_type == StateType::History || leaf.node_type == StateType::DeepHistory)
+            && path.len() >= 2
+        {
+            let ancestors = &path[..path.len() - 1];
+            return Some(self.resolve_history_target(ancestors));
+        }
+
+        let value = self.state_value_from_path(&path);
+        let mut full_path = path.clone();
+        self.expand_initial_path(leaf, &mut full_path);
+        Some((full_path, value))
+    }
+
+    fn resolve_history_target<'a>(
+        &self,
+        ancestors: &[&'a StateNode],
+    ) -> (Vec<&'a StateNode>, StateValue) {
+        let parent = *ancestors.last().expect("ancestors should not be empty");
+        let recorded = self.history.borrow().get(&parent.name).cloned();
+        if let Some(recorded) = recorded {
+            let mut value = recorded.clone();
+            for ancestor in ancestors.iter().rev() {
+                value = StateValue::Compound {
+                    state: ancestor.name.clone(),
+                    child: Box::new(value),
+                };
+            }
+            (ancestors.to_vec(), value)
+        } else {
+            let value = self.state_value_from_path(ancestors);
+            let mut full_path = ancestors.to_vec();
+            self.expand_initial_path(parent, &mut full_path);
+            (full_path, value)
+        }
     }
 
     fn state_value_from_path(&self, path: &[&StateNode]) -> StateValue {
@@ -685,6 +719,9 @@ impl Interpreter {
                 let regions: Vec<_> = node
                     .children
                     .iter()
+                    .filter(|c| {
+                        c.node_type != StateType::History && c.node_type != StateType::DeepHistory
+                    })
                     .map(|c| (c.name.clone(), self.resolve_region_value(c)))
                     .collect();
                 StateValue::Compound {
@@ -2170,5 +2207,344 @@ mod tests {
             .unwrap();
 
         assert_eq!(new_state, StateValue::Atomic("loaded".into()));
+    }
+
+    fn history_machine() -> Machine {
+        Machine {
+            id: "m".into(),
+            initial: "on".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                IrStateNode {
+                    name: "on".into(),
+                    description: None,
+                    initial: Some("first".into()),
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "POWER".into(),
+                        target: Some("off".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                    }],
+                    children: vec![
+                        IrStateNode {
+                            name: "first".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![Transition {
+                                event: "SWITCH".into(),
+                                target: Some("second".into()),
+                                guard: None,
+                                actions: vec![],
+                                description: None,
+                                delay_ms: None,
+                            }],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                        },
+                        IrStateNode {
+                            name: "second".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                        },
+                        IrStateNode {
+                            name: "hist".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::History,
+                            tags: vec![],
+                            invoke: None,
+                        },
+                    ],
+                    node_type: StateType::Compound,
+                    tags: vec![],
+                    invoke: None,
+                },
+                IrStateNode {
+                    name: "off".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "POWER".into(),
+                        target: Some("on.hist".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn dot_path_history_restore() {
+        let interpreter = Interpreter::new(history_machine());
+        let mut context = interpreter.initial_context();
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+
+        let state = interpreter.initial_state();
+        assert_eq!(
+            state,
+            StateValue::Compound {
+                state: "on".into(),
+                child: Box::new(StateValue::Atomic("first".into())),
+            }
+        );
+
+        let state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "SWITCH"}),
+                &mut context,
+                &guards,
+                &mut actions,
+                &MockClock::new(0),
+            )
+            .unwrap();
+        assert_eq!(
+            state,
+            StateValue::Compound {
+                state: "on".into(),
+                child: Box::new(StateValue::Atomic("second".into())),
+            }
+        );
+
+        let state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "POWER"}),
+                &mut context,
+                &guards,
+                &mut actions,
+                &MockClock::new(0),
+            )
+            .unwrap();
+        assert_eq!(state, StateValue::Atomic("off".into()));
+
+        let state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "POWER"}),
+                &mut context,
+                &guards,
+                &mut actions,
+                &MockClock::new(0),
+            )
+            .unwrap();
+        assert_eq!(
+            state,
+            StateValue::Compound {
+                state: "on".into(),
+                child: Box::new(StateValue::Atomic("second".into())),
+            }
+        );
+    }
+
+    #[test]
+    fn dot_path_simple_target() {
+        let machine = Machine {
+            id: "dot".into(),
+            initial: "start".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                IrStateNode {
+                    name: "start".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "GO".into(),
+                        target: Some("parent.b".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                },
+                IrStateNode {
+                    name: "parent".into(),
+                    description: None,
+                    initial: Some("a".into()),
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![
+                        IrStateNode {
+                            name: "a".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                        },
+                        IrStateNode {
+                            name: "b".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                        },
+                    ],
+                    node_type: StateType::Compound,
+                    tags: vec![],
+                    invoke: None,
+                },
+            ],
+        };
+
+        let interpreter = Interpreter::new(machine);
+        let state = StateValue::Atomic("start".into());
+        let mut context = interpreter.initial_context();
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+
+        let new_state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "GO"}),
+                &mut context,
+                &guards,
+                &mut actions,
+                &MockClock::new(0),
+            )
+            .unwrap();
+        assert_eq!(
+            new_state,
+            StateValue::Compound {
+                state: "parent".into(),
+                child: Box::new(StateValue::Atomic("b".into())),
+            }
+        );
+    }
+
+    #[test]
+    fn nested_dot_path() {
+        let machine = Machine {
+            id: "nested".into(),
+            initial: "start".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                IrStateNode {
+                    name: "start".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "GO".into(),
+                        target: Some("a.b.c".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                },
+                IrStateNode {
+                    name: "a".into(),
+                    description: None,
+                    initial: Some("b".into()),
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![IrStateNode {
+                        name: "b".into(),
+                        description: None,
+                        initial: Some("c".into()),
+                        entry: vec![],
+                        exit: vec![],
+                        transitions: vec![],
+                        children: vec![IrStateNode {
+                            name: "c".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                        }],
+                        node_type: StateType::Compound,
+                        tags: vec![],
+                        invoke: None,
+                    }],
+                    node_type: StateType::Compound,
+                    tags: vec![],
+                    invoke: None,
+                },
+            ],
+        };
+
+        let interpreter = Interpreter::new(machine);
+        let state = StateValue::Atomic("start".into());
+        let mut context = interpreter.initial_context();
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+
+        let new_state = interpreter
+            .send(
+                &state,
+                &serde_json::json!({"type": "GO"}),
+                &mut context,
+                &guards,
+                &mut actions,
+                &MockClock::new(0),
+            )
+            .unwrap();
+        assert_eq!(
+            new_state,
+            StateValue::Compound {
+                state: "a".into(),
+                child: Box::new(StateValue::Compound {
+                    state: "b".into(),
+                    child: Box::new(StateValue::Atomic("c".into())),
+                }),
+            }
+        );
     }
 }

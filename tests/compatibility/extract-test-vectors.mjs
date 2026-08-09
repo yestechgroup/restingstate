@@ -344,6 +344,12 @@ const SKIP_PATTERNS = [
   // `to:`/`type:`/`id:`/`route:`/`initial:` values are not state targets.
   [/[\s{};,](?!to\s*:|route\s*:|type\s*:|id\s*:|initial\s*:)[A-Za-z_$][\w$]*\s*:\s*['"`]#[^'"`]+['"`]/, "absolute targets"],
   [/\bafter\s*:/, "after (timing)"],
+  // `{ history: true }`, `{ history: 'deep' }`, `{ history: 'shallow' }`
+  // shorthand state definitions: the parser only understands
+  // `type: 'history'` nodes, so these machines cannot be represented.
+  [/{\s*history\s*:\s*(?:true|'[^']*'|"[^"]*")\s*}/, "history shorthand"],
+  // `onDone` on a state node (parallel completion) is not extracted.
+  [/\bonDone\s*:/, "onDone (final completion)"],
 ];
 
 function findSkipReason(blockText) {
@@ -364,7 +370,28 @@ function buildStateNamePathMap(states, prefix = "") {
     if (!(state.name in map)) map[state.name] = [];
     map[state.name].push(path);
     if (state.children && state.children.length > 0) {
-      Object.assign(map, buildStateNamePathMap(state.children, path));
+      // Merge instead of overwrite: duplicate names must keep every path so
+      // the uniqueness check below stays correct.
+      const childMap = buildStateNamePathMap(state.children, path);
+      for (const [name, paths] of Object.entries(childMap)) {
+        map[name] = [...(map[name] || []), ...paths];
+      }
+    }
+  }
+  return map;
+}
+
+/** Map of state-node path -> direct child paths (used for relative targets). */
+function buildChildPathMap(states, prefix = "", map = new Map()) {
+  for (const state of states) {
+    const path = prefix ? `${prefix}.${state.name}` : state.name;
+    if (!map.has(prefix)) map.set(prefix, []);
+    map.get(prefix).push(path);
+    if (!map.has(path)) map.set(path, []);
+    if (state.children && state.children.length > 0) {
+      for (const child of state.children) {
+        buildChildPathMap([child], path, map);
+      }
     }
   }
   return map;
@@ -373,10 +400,30 @@ function buildStateNamePathMap(states, prefix = "") {
 function irToXstateConfig(ir) {
   const machineId = ir.id || "machine";
   const namePathMap = buildStateNamePathMap(ir.states, machineId);
+  const childPathMap = buildChildPathMap(ir.states, machineId);
 
-  function resolveTarget(target) {
+  function resolveTarget(target, nodePath) {
     if (!target) return target;
-    // Only rewrite names that are unambiguous; ambiguous names are resolved
+    // Resolve relative targets the way xstate.js does: walk up from the
+    // source node's scope and take the nearest ancestor whose descendant
+    // matches. Handles plain names and dot-paths like `on.hist`.
+    const parts = target.split(".");
+    const scopeSegments = nodePath.split(".");
+    for (let len = scopeSegments.length; len >= 1; len--) {
+      let current = scopeSegments.slice(0, len).join(".");
+      let found = true;
+      for (const part of parts) {
+        const kids = childPathMap.get(current);
+        const next = kids && kids.find((p) => p.split(".").pop() === part);
+        if (!next) {
+          found = false;
+          break;
+        }
+        current = next;
+      }
+      if (found) return `#${current}`;
+    }
+    // Fall back to unambiguous global names; ambiguous names are resolved
     // relative to the state node by xstate.js itself.
     const paths = namePathMap[target];
     if (paths && paths.length === 1) return `#${paths[0]}`;
@@ -396,7 +443,7 @@ function irToXstateConfig(ir) {
       for (const t of state.transitions) {
         const isAlways = t.event === "" || t.event === undefined;
         const entry = {};
-        if (t.target) entry.target = resolveTarget(t.target);
+        if (t.target) entry.target = resolveTarget(t.target, path);
         if (t.guard) entry.guard = t.guard.name;
         if (t.actions && t.actions.length > 0) entry.actions = t.actions.map((a) => a.name);
         if (isAlways) {
@@ -478,8 +525,8 @@ function resolveInitialStateValue(ir) {
     if (!node) return name;
     if (node.type === "parallel") {
       const regions = {};
-      for (const child of list) {
-        if (child.name === node.name) continue;
+      // Regions are the node's own children, not its siblings.
+      for (const child of node.children || []) {
         regions[child.name] = walk(child.children, child.initial) ?? child.name;
       }
       return { [node.name]: regions };
@@ -548,6 +595,16 @@ function sameKeySets(a, b) {
   return JSON.stringify(Object.keys(a).sort()) === JSON.stringify(Object.keys(b).sort());
 }
 
+function buildInitialContext(machineIr) {
+  const ctx = {};
+  if (machineIr && machineIr.context && machineIr.context.fields) {
+    for (const field of machineIr.context.fields) {
+      ctx[field.name] = field.default_value;
+    }
+  }
+  return ctx;
+}
+
 function buildVector({ block, machineIr, fileBase, index, skipCompare }) {
   const events = scanEvents(block.text);
   const expects = scanExpectedValues(block.text);
@@ -596,12 +653,13 @@ function buildVector({ block, machineIr, fileBase, index, skipCompare }) {
     : machineIr.id;
 
   const expected = [];
+  const initialContext = buildInitialContext(machineIr);
   for (let i = 0; i < events.length; i++) {
     if (i in expectedByStep) {
       expected.push({
         step: i,
         event: events[i].event,
-        snapshot: { value: expectedByStep[i], context: {} },
+        snapshot: { value: expectedByStep[i], context: initialContext },
       });
     }
   }
@@ -619,7 +677,7 @@ function buildVector({ block, machineIr, fileBase, index, skipCompare }) {
     machine_ir: machineIr,
     machine_config: irToXstateConfig(machineIr),
     protocol: {
-      initial: { value: initialValue, context: {} },
+      initial: { value: initialValue, context: initialContext },
       events: events.map((e) => e.event),
     },
     expected,
@@ -661,6 +719,12 @@ function processFile(filePath, binary) {
       // Blocks may define several machines (e.g. a child + a parent). The
       // assertions in xstate tests usually target the last one created.
       const machineIr = machines[machines.length - 1];
+      if (!machineIr.states || machineIr.states.length === 0) {
+        // The parser failed to extract any state (e.g. `invoke` with a
+        // function expression). The IR is unusable.
+        skipped.push({ block, reason: "machine with no states" });
+        continue;
+      }
       if (!machineIr.initial) {
         if (scanEvents(block.text).length > 0) {
           // The IR cannot express a parallel root (no root-level `type`), so
