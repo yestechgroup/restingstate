@@ -1,0 +1,70 @@
+{
+  "name": "counter",
+  "description": "Single-state counter with INCREMENT/DECREMENT assign actions and context",
+  "machine_ir": {
+    "id": "counter",
+    "initial": "active",
+    "context": {
+      "fields": [
+        {
+          "name": "count",
+          "type_name": "number",
+          "default_value": 0
+        }
+      ]
+    },
+    "states": [
+      {
+        "name": "active",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "INCREMENT",
+            "actions": [
+              {
+                "name": "assign",
+                "args": [
+                  "count",
+                  "__increment"
+                ]
+              }
+            ]
+          },
+          {
+            "event": "DECREMENT",
+            "actions": [
+              {
+                "name": "assign",
+                "args": [
+                  "count",
+                  "__decrement"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "counter",
+    "context": {
+      "count": 0
+    },
+    "on": {
+      "INCREMENT": {
+        "actions": ["increment_count"]
+      },
+      "DECREMENT": {
+        "actions": ["decrement_count"]
+      }
+    }
+  },
+  "events": [
+    { "type": "INCREMENT" },
+    { "type": "DECREMENT" },
+    { "type": "INCREMENT" },
+    { "type": "INCREMENT" }
+  ],
+  "context_size": 1
+}

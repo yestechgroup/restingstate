@@ -1,0 +1,52 @@
+{
+  "name": "toggle",
+  "machine_config": {
+    "id": "toggle",
+    "initial": "inactive",
+    "context": {},
+    "states": {
+      "inactive": {
+        "on": {
+          "TOGGLE": "active"
+        }
+      },
+      "active": {
+        "on": {
+          "TOGGLE": "inactive"
+        }
+      }
+    }
+  },
+  "machine_ir": {
+    "id": "toggle",
+    "initial": "inactive",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "inactive",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "TOGGLE",
+            "target": "active"
+          }
+        ]
+      },
+      {
+        "name": "active",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "TOGGLE",
+            "target": "inactive"
+          }
+        ]
+      }
+    ]
+  },
+  "events": [
+    { "type": "TOGGLE" }
+  ]
+}

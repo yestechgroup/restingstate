@@ -1,0 +1,12 @@
+{
+  "name": "xstate-benchmarks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "node run-benchmarks.mjs",
+    "report": "node generate-report.mjs"
+  },
+  "dependencies": {
+    "xstate": "^5.0.0"
+  }
+}

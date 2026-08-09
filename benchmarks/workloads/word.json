@@ -1,0 +1,230 @@
+{
+  "name": "word",
+  "machine_config": {
+    "id": "word",
+    "type": "parallel",
+    "states": {
+      "bold": {
+        "initial": "off",
+        "states": {
+          "on": {
+            "on": {
+              "TOGGLE_BOLD": "off"
+            }
+          },
+          "off": {
+            "on": {
+              "TOGGLE_BOLD": "on"
+            }
+          }
+        }
+      },
+      "underline": {
+        "initial": "off",
+        "states": {
+          "on": {
+            "on": {
+              "TOGGLE_UNDERLINE": "off"
+            }
+          },
+          "off": {
+            "on": {
+              "TOGGLE_UNDERLINE": "on"
+            }
+          }
+        }
+      },
+      "italics": {
+        "initial": "off",
+        "states": {
+          "on": {
+            "on": {
+              "TOGGLE_ITALICS": "off"
+            }
+          },
+          "off": {
+            "on": {
+              "TOGGLE_ITALICS": "on"
+            }
+          }
+        }
+      },
+      "list": {
+        "initial": "none",
+        "states": {
+          "none": {
+            "on": {
+              "BULLETS": "bullets",
+              "NUMBERS": "numbers"
+            }
+          },
+          "bullets": {
+            "on": {
+              "NONE": "none",
+              "NUMBERS": "numbers"
+            }
+          },
+          "numbers": {
+            "on": {
+              "BULLETS": "bullets",
+              "NONE": "none"
+            }
+          }
+        }
+      }
+    }
+  },
+  "machine_ir": {
+    "id": "word",
+    "initial": "word",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "word",
+        "type": "parallel",
+        "children": [
+          {
+            "name": "bold",
+            "type": "compound",
+            "initial": "off",
+            "children": [
+              {
+                "name": "on",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "TOGGLE_BOLD",
+                    "target": "off"
+                  }
+                ]
+              },
+              {
+                "name": "off",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "TOGGLE_BOLD",
+                    "target": "on"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "underline",
+            "type": "compound",
+            "initial": "off",
+            "children": [
+              {
+                "name": "on",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "TOGGLE_UNDERLINE",
+                    "target": "off"
+                  }
+                ]
+              },
+              {
+                "name": "off",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "TOGGLE_UNDERLINE",
+                    "target": "on"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "italics",
+            "type": "compound",
+            "initial": "off",
+            "children": [
+              {
+                "name": "on",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "TOGGLE_ITALICS",
+                    "target": "off"
+                  }
+                ]
+              },
+              {
+                "name": "off",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "TOGGLE_ITALICS",
+                    "target": "on"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "list",
+            "type": "compound",
+            "initial": "none",
+            "children": [
+              {
+                "name": "none",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "BULLETS",
+                    "target": "bullets"
+                  },
+                  {
+                    "event": "NUMBERS",
+                    "target": "numbers"
+                  }
+                ]
+              },
+              {
+                "name": "bullets",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "NONE",
+                    "target": "none"
+                  },
+                  {
+                    "event": "NUMBERS",
+                    "target": "numbers"
+                  }
+                ]
+              },
+              {
+                "name": "numbers",
+                "type": "atomic",
+                "transitions": [
+                  {
+                    "event": "BULLETS",
+                    "target": "bullets"
+                  },
+                  {
+                    "event": "NONE",
+                    "target": "none"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "events": [
+    { "type": "TOGGLE_BOLD" },
+    { "type": "TOGGLE_ITALICS" },
+    { "type": "BULLETS" },
+    { "type": "TOGGLE_UNDERLINE" },
+    { "type": "NUMBERS" },
+    { "type": "NONE" }
+  ]
+}

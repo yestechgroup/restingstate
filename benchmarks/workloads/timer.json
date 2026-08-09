@@ -1,0 +1,158 @@
+{
+  "name": "timer",
+  "description": "Timer with stopped/running states, guards, always transitions, invoked ticks, minute/second adjustments",
+  "machine_ir": {
+    "id": "timer",
+    "initial": "stopped",
+    "context": {
+      "fields": [
+        {
+          "name": "seconds",
+          "type_name": "number",
+          "default_value": 0
+        }
+      ]
+    },
+    "states": [
+      {
+        "name": "stopped",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "start",
+            "target": "running",
+            "guard": {
+              "name": "seconds_gt_0"
+            }
+          },
+          {
+            "event": "minute",
+            "actions": [
+              {
+                "name": "assign",
+                "args": [
+                  "seconds",
+                  "__add60"
+                ]
+              }
+            ]
+          },
+          {
+            "event": "second",
+            "actions": [
+              {
+                "name": "assign",
+                "args": [
+                  "seconds",
+                  "__increment"
+                ]
+              }
+            ]
+          },
+          {
+            "event": "reset",
+            "guard": {
+              "name": "seconds_gt_0"
+            },
+            "actions": [
+              {
+                "name": "assign",
+                "args": [
+                  "seconds",
+                  0
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "running",
+        "type": "atomic",
+        "invoke": {
+          "src": "ticks"
+        },
+        "transitions": [
+          {
+            "event": "stop",
+            "target": "stopped"
+          },
+          {
+            "event": "TICK",
+            "target": "running",
+            "actions": [
+              {
+                "name": "assign",
+                "args": [
+                  "seconds",
+                  "__decrement"
+                ]
+              }
+            ]
+          },
+          {
+            "event": "",
+            "target": "stopped",
+            "guard": {
+              "name": "seconds_eq_0"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "context": {
+      "seconds": 0
+    },
+    "initial": "stopped",
+    "states": {
+      "stopped": {
+        "on": {
+          "start": {
+            "guard": "seconds_gt_0",
+            "target": "running"
+          },
+          "minute": {
+            "actions": ["add_60_seconds"]
+          },
+          "second": {
+            "actions": ["add_1_second"]
+          }
+        }
+      },
+      "running": {
+        "invoke": {
+          "src": "ticks"
+        },
+        "on": {
+          "stop": "stopped",
+          "TICK": {
+            "actions": ["decrement_second"]
+          }
+        },
+        "always": {
+          "guard": "seconds_eq_0",
+          "target": "stopped"
+        }
+      }
+    },
+    "on": {
+      "reset": {
+        "guard": "seconds_gt_0",
+        "actions": ["reset_seconds"]
+      }
+    }
+  },
+  "events": [
+    { "type": "minute" },
+    { "type": "second" },
+    { "type": "second" },
+    { "type": "start" },
+    { "type": "TICK" },
+    { "type": "TICK" },
+    { "type": "stop" },
+    { "type": "reset" }
+  ],
+  "context_size": 1
+}

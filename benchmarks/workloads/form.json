@@ -1,0 +1,77 @@
+{
+  "name": "form",
+  "machine_config": {
+    "id": "form",
+    "initial": "editing",
+    "context": {},
+    "states": {
+      "editing": {
+        "id": "form.editing",
+        "initial": "empty",
+        "states": {
+          "empty": {
+            "id": "form.editing.empty",
+            "on": {
+              "TYPE": "filled"
+            }
+          },
+          "filled": {
+            "id": "form.editing.filled",
+            "on": {
+              "SUBMIT": "#form.submitted"
+            }
+          }
+        }
+      },
+      "submitted": {
+        "id": "form.submitted",
+        "type": "final"
+      }
+    }
+  },
+  "machine_ir": {
+    "id": "form",
+    "initial": "editing",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "editing",
+        "type": "compound",
+        "initial": "empty",
+        "children": [
+          {
+            "name": "empty",
+            "type": "atomic",
+            "transitions": [
+              {
+                "event": "TYPE",
+                "target": "filled"
+              }
+            ]
+          },
+          {
+            "name": "filled",
+            "type": "atomic",
+            "transitions": [
+              {
+                "event": "SUBMIT",
+                "target": "submitted"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "submitted",
+        "type": "final"
+      }
+    ]
+  },
+  "events": [
+    { "type": "TYPE" },
+    { "type": "TYPE" },
+    { "type": "SUBMIT" }
+  ]
+}

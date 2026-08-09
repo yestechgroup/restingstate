@@ -8,6 +8,7 @@ members = [
     "crates/xstate-macro",
     "crates/xstate-macro-test",
     "crates/xstate-napi",
+    "crates/xstate-wasm",
     "crates/xstate-actor",
     "tests/compatibility/rust-runner",
     "examples/rust-token-bucket",

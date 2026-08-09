@@ -1,0 +1,109 @@
+{
+  "name": "stopwatch",
+  "description": "Compound state stopwatch with running/stopped states, invoked ticks, elapsed time context",
+  "machine_ir": {
+    "id": "stopwatch",
+    "initial": "stopped",
+    "context": {
+      "fields": [
+        {
+          "name": "elapsed",
+          "type_name": "number",
+          "default_value": 0
+        }
+      ]
+    },
+    "states": [
+      {
+        "name": "stopped",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "start",
+            "target": "running"
+          },
+          {
+            "event": "reset",
+            "target": "stopped",
+            "actions": [
+              {
+                "name": "assign",
+                "args": [
+                  "elapsed",
+                  0
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "running",
+        "type": "atomic",
+        "invoke": {
+          "src": "ticks"
+        },
+        "transitions": [
+          {
+            "event": "TICK",
+            "target": "running",
+            "actions": [
+              {
+                "name": "assign",
+                "args": [
+                  "elapsed",
+                  "__increment"
+                ]
+              }
+            ]
+          },
+          {
+            "event": "stop",
+            "target": "stopped"
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "stopwatch",
+    "initial": "stopped",
+    "context": {
+      "elapsed": 0
+    },
+    "states": {
+      "stopped": {
+        "on": {
+          "start": "running"
+        }
+      },
+      "running": {
+        "invoke": {
+          "src": "ticks"
+        },
+        "on": {
+          "TICK": {
+            "actions": ["increment_elapsed"]
+          },
+          "stop": "stopped"
+        }
+      }
+    },
+    "on": {
+      "reset": {
+        "actions": ["reset_elapsed"],
+        "target": ".stopped"
+      }
+    }
+  },
+  "events": [
+    { "type": "start" },
+    { "type": "TICK" },
+    { "type": "TICK" },
+    { "type": "stop" },
+    { "type": "start" },
+    { "type": "TICK" },
+    { "type": "reset" }
+  ],
+  "context_size": 1
+}

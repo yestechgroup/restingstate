@@ -1,0 +1,67 @@
+{
+  "name": "traffic-light",
+  "machine_config": {
+    "id": "traffic-light",
+    "initial": "green",
+    "context": {},
+    "states": {
+      "green": {
+        "on": {
+          "NEXT": "yellow"
+        }
+      },
+      "yellow": {
+        "on": {
+          "NEXT": "red"
+        }
+      },
+      "red": {
+        "on": {
+          "NEXT": "green"
+        }
+      }
+    }
+  },
+  "machine_ir": {
+    "id": "traffic-light",
+    "initial": "green",
+    "context": {
+      "fields": []
+    },
+    "states": [
+      {
+        "name": "green",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "NEXT",
+            "target": "yellow"
+          }
+        ]
+      },
+      {
+        "name": "yellow",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "NEXT",
+            "target": "red"
+          }
+        ]
+      },
+      {
+        "name": "red",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "NEXT",
+            "target": "green"
+          }
+        ]
+      }
+    ]
+  },
+  "events": [
+    { "type": "NEXT" }
+  ]
+}

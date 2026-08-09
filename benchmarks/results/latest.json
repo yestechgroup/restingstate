@@ -1,0 +1,455 @@
+{
+  "system": {
+    "os": "Linux 7.0.0-22-generic",
+    "cpu": "Intel(R) Xeon(R) Gold 6140 CPU @ 2.30GHz",
+    "node": "v22.22.1",
+    "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "timestamp": "2026-08-09T07:47:11.085Z",
+    "warmup_events": 1000,
+    "measured_events": 100000,
+    "trials": 5
+  },
+  "results": [
+    {
+      "workload": "auth",
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 1.5088849999999128,
+          "min": 0.25400199999990036,
+          "max": 5.169974999999994
+        },
+        "total_ms": {
+          "mean": 533.7728604,
+          "min": 518.631457,
+          "max": 567.530557
+        },
+        "throughput_eps": {
+          "mean": 187543.2,
+          "min": 176202,
+          "max": 192815
+        },
+        "snapshot_bytes": {
+          "mean": 109
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0,
+          "min": 0,
+          "max": 0
+        },
+        "total_ms": {
+          "mean": 71.6551817999999,
+          "min": 65.9202479999999,
+          "max": 77.46242699999993
+        },
+        "throughput_eps": {
+          "mean": 140180.2,
+          "min": 129095,
+          "max": 151698
+        },
+        "snapshot_bytes": {
+          "mean": 0
+        },
+        "trials": 5
+      },
+      "speedup": 0.7474555195816217
+    },
+    {
+      "workload": "counter",
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.43881460000002337,
+          "min": 0.17214600000033897,
+          "max": 0.8424049999998715
+        },
+        "total_ms": {
+          "mean": 245.23926519999995,
+          "min": 224.68948200000023,
+          "max": 277.8504560000001
+        },
+        "throughput_eps": {
+          "mean": 411561.6,
+          "min": 359906,
+          "max": 445059
+        },
+        "snapshot_bytes": {
+          "mean": 94
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0,
+          "min": 0,
+          "max": 0
+        },
+        "total_ms": {
+          "mean": 58.73617959999992,
+          "min": 57.23073699999986,
+          "max": 60.53964300000007
+        },
+        "throughput_eps": {
+          "mean": 170325.6,
+          "min": 165181,
+          "max": 174731
+        },
+        "snapshot_bytes": {
+          "mean": 0
+        },
+        "trials": 5
+      },
+      "speedup": 0.41385202117981856
+    },
+    {
+      "workload": "entry-exit",
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.37503340000021124,
+          "min": 0.133787000000666,
+          "max": 1.27068700000018
+        },
+        "total_ms": {
+          "mean": 124.0212442,
+          "min": 117.68218400000023,
+          "max": 138.87834500000008
+        },
+        "throughput_eps": {
+          "mean": 809800.2,
+          "min": 720055,
+          "max": 849746
+        },
+        "snapshot_bytes": {
+          "mean": 91
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0,
+          "min": 0,
+          "max": 0
+        },
+        "total_ms": {
+          "mean": 36.72392299999992,
+          "min": 27.27957400000014,
+          "max": 49.051314000000275
+        },
+        "throughput_eps": {
+          "mean": 288835.6,
+          "min": 203868,
+          "max": 366575
+        },
+        "snapshot_bytes": {
+          "mean": 0
+        },
+        "trials": 5
+      },
+      "speedup": 0.35667514036178305
+    },
+    {
+      "workload": "form",
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.35228619999998045,
+          "min": 0.10420500000054744,
+          "max": 0.9516029999995226
+        },
+        "total_ms": {
+          "mean": 7.660580799999844,
+          "min": 4.937550999999985,
+          "max": 13.570620999999846
+        },
+        "throughput_eps": {
+          "mean": 14882352.2,
+          "min": 7368860,
+          "max": 20252955
+        },
+        "snapshot_bytes": {
+          "mean": 92
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0,
+          "min": 0,
+          "max": 0
+        },
+        "total_ms": {
+          "mean": 42.03073280000008,
+          "min": 27.591287000000193,
+          "max": 47.44808900000044
+        },
+        "throughput_eps": {
+          "mean": 247859.4,
+          "min": 210757,
+          "max": 362433
+        },
+        "snapshot_bytes": {
+          "mean": 0
+        },
+        "trials": 5
+      },
+      "speedup": 0.01665458501916115
+    },
+    {
+      "workload": "stopwatch",
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.4314779999996972,
+          "min": 0.1821799999997893,
+          "max": 1.15391499999987
+        },
+        "total_ms": {
+          "mean": 744.278489,
+          "min": 686.3068519999997,
+          "max": 843.9057420000008
+        },
+        "throughput_eps": {
+          "mean": 135092.8,
+          "min": 118497,
+          "max": 145707
+        },
+        "snapshot_bytes": {
+          "mean": 170
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0,
+          "min": 0,
+          "max": 0
+        },
+        "total_ms": {
+          "mean": 61.30011139999988,
+          "min": 58.90835199999856,
+          "max": 63.577094000000216
+        },
+        "throughput_eps": {
+          "mean": 163275.4,
+          "min": 157289,
+          "max": 169755
+        },
+        "snapshot_bytes": {
+          "mean": 0
+        },
+        "trials": 5
+      },
+      "speedup": 1.2086165954070092
+    },
+    {
+      "workload": "timer",
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.4260702000003221,
+          "min": 0.22519199999987904,
+          "max": 0.9744399999999587
+        },
+        "total_ms": {
+          "mean": 186.57861019999982,
+          "min": 180.69113499999912,
+          "max": 198.74940500000048
+        },
+        "throughput_eps": {
+          "mean": 536632.4,
+          "min": 503146,
+          "max": 553431
+        },
+        "snapshot_bytes": {
+          "mean": 103
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0,
+          "min": 0,
+          "max": 0
+        },
+        "total_ms": {
+          "mean": 59.37045839999992,
+          "min": 57.75614599999972,
+          "max": 61.44710400000076
+        },
+        "throughput_eps": {
+          "mean": 168524.8,
+          "min": 162742,
+          "max": 173142
+        },
+        "snapshot_bytes": {
+          "mean": 0
+        },
+        "trials": 5
+      },
+      "speedup": 0.31404141829677074
+    },
+    {
+      "workload": "toggle",
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.22012020000038318,
+          "min": 0.12687800000094285,
+          "max": 0.5479469999991124
+        },
+        "total_ms": {
+          "mean": 479.38278879999996,
+          "min": 464.1749060000002,
+          "max": 495.6863089999988
+        },
+        "throughput_eps": {
+          "mean": 208757.6,
+          "min": 201740,
+          "max": 215436
+        },
+        "snapshot_bytes": {
+          "mean": 93
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0,
+          "min": 0,
+          "max": 0
+        },
+        "total_ms": {
+          "mean": 50.302629599999634,
+          "min": 48.58188399999926,
+          "max": 51.34207900000001
+        },
+        "throughput_eps": {
+          "mean": 198872.6,
+          "min": 194772,
+          "max": 205838
+        },
+        "snapshot_bytes": {
+          "mean": 0
+        },
+        "trials": 5
+      },
+      "speedup": 0.9526484305242061
+    },
+    {
+      "workload": "traffic-light",
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.34775819999995294,
+          "min": 0.14919600000030186,
+          "max": 0.743771999999808
+        },
+        "total_ms": {
+          "mean": 497.47063799999995,
+          "min": 468.52324800000133,
+          "max": 560.8975100000007
+        },
+        "throughput_eps": {
+          "mean": 201809.4,
+          "min": 178286,
+          "max": 213437
+        },
+        "snapshot_bytes": {
+          "mean": 88
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0,
+          "min": 0,
+          "max": 0
+        },
+        "total_ms": {
+          "mean": 50.22981280000094,
+          "min": 48.1971369999992,
+          "max": 51.934800999999425
+        },
+        "throughput_eps": {
+          "mean": 199223.2,
+          "min": 192549,
+          "max": 207481
+        },
+        "snapshot_bytes": {
+          "mean": 0
+        },
+        "trials": 5
+      },
+      "speedup": 0.9871849378671163
+    },
+    {
+      "workload": "word",
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.8079280000005383,
+          "min": 0.2776799999992363,
+          "max": 2.866354000001593
+        },
+        "total_ms": {
+          "mean": 1146.5271591999997,
+          "min": 1126.0593479999989,
+          "max": 1166.8957300000002
+        },
+        "throughput_eps": {
+          "mean": 87233.8,
+          "min": 85697,
+          "max": 88805
+        },
+        "snapshot_bytes": {
+          "mean": 148
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0,
+          "min": 0,
+          "max": 0
+        },
+        "total_ms": {
+          "mean": 84.45969299999925,
+          "min": 79.96859200000108,
+          "max": 90.55167000000074
+        },
+        "throughput_eps": {
+          "mean": 118692.2,
+          "min": 110434,
+          "max": 125049
+        },
+        "snapshot_bytes": {
+          "mean": 0
+        },
+        "trials": 5
+      },
+      "speedup": 1.3606216856310283
+    }
+  ]
+}

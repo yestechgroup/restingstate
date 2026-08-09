@@ -1,0 +1,17 @@
+[package]
+name = "xstate-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+xstate-core = { path = "../xstate-core" }
+xstate-ir = { path = "../xstate-ir" }
+wasm-bindgen = "0.2"
+serde = { workspace = true }
+serde_json.workspace = true
+console_error_panic_hook = "0.1"
