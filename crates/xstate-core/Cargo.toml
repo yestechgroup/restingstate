@@ -10,3 +10,7 @@ xstate-ir = { path = "../xstate-ir" }
 serde.workspace = true
 serde_json.workspace = true
 tokio = { version = "1", features = ["sync", "rt", "macros"] }
+
+[dev-dependencies]
+proptest = "1"
+tokio = { version = "1", features = ["full"] }

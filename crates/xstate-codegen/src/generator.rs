@@ -12,12 +12,30 @@ pub fn generate(machine: &Machine) -> Result<TokenStream, CodegenError> {
     let context_struct = generate_context_struct(machine)?;
     let machine_impl = generate_machine_impl(machine)?;
 
+    let setup_modules = if let Some(ref setup) = machine.setup {
+        if !setup.is_empty() {
+            let guard_mods = crate::actor_gen::generate_guard_modules(setup);
+            let action_mods = crate::actor_gen::generate_action_modules(setup);
+            let actor_mods = crate::actor_gen::generate_actor_modules(setup);
+            Some(quote! {
+                #guard_mods
+                #action_mods
+                #actor_mods
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let tokens = quote! {
         #state_enum
         #event_enum
         #event_payload
         #context_struct
         #machine_impl
+        #setup_modules
     };
 
     Ok(tokens)
@@ -182,7 +200,7 @@ fn generate_machine_impl(machine: &Machine) -> Result<TokenStream, CodegenError>
 }
 
 fn to_pascal_case(s: &str) -> String {
-    s.split(['_', '-'])
+    s.split(['_', '-', '.'])
         .filter(|part| !part.is_empty())
         .map(|part| {
             let mut chars = part.chars();
