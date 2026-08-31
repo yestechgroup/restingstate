@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-pub trait Clock {
+pub trait Clock: Send + Sync {
     fn now_ms(&self) -> u64;
 }
 

@@ -4,6 +4,7 @@ pub struct Snapshot<C, S> {
     pub state_value: S,
     pub context: C,
     pub history: Vec<S>,
+    pub output: Option<serde_json::Value>,
 }
 
 impl<C, S> Snapshot<C, S>
@@ -23,10 +24,11 @@ where
 {
     fn serialize<Ser: serde::Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
         use serde::ser::SerializeStruct;
-        let mut s = serializer.serialize_struct("Snapshot", 3)?;
+        let mut s = serializer.serialize_struct("Snapshot", 4)?;
         s.serialize_field("state_value", &self.state_value)?;
         s.serialize_field("context", &self.context)?;
         s.serialize_field("history", &self.history)?;
+        s.serialize_field("output", &self.output)?;
         s.end()
     }
 }
@@ -42,12 +44,15 @@ where
             state_value: S,
             context: C,
             history: Vec<S>,
+            #[serde(default)]
+            output: Option<serde_json::Value>,
         }
         let h = Helper::deserialize(deserializer)?;
         Ok(Snapshot {
             state_value: h.state_value,
             context: h.context,
             history: h.history,
+            output: h.output,
         })
     }
 }

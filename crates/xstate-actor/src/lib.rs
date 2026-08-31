@@ -4,3 +4,4 @@ pub mod system;
 
 pub use handle::{ActorHandle, ActorStatus};
 pub use system::ActorSystem;
+pub use xstate_core::actor_logic::ActorLogic;

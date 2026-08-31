@@ -1,6 +1,6 @@
 use serde_json::json;
-use xstate_core::clock::MockClock;
 use xstate_core::Interpreter;
+use xstate_core::clock::MockClock;
 use xstate_ir::{ContextField, ContextSchema, Machine, StateNode, StateType, Transition};
 
 fn main() {

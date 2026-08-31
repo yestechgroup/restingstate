@@ -272,4 +272,4 @@ cargo build -p xstate-wasm --target wasm32-unknown-unknown
 
 - **XState v5**: pinned in `packages/package.json`
 - **OXC**: 0.77.x
-- **Rust**: edition 2021, MSRV TBD (likely 1.75+)
+- **Rust**: edition 2024, MSRV 1.97 (toolchain pinned via `rust-toolchain.toml`)

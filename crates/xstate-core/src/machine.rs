@@ -21,6 +21,7 @@ pub trait Machine {
             state_value: self.initial_state(),
             context: self.initial_context(),
             history: Vec::new(),
+            output: None,
         }
     }
 

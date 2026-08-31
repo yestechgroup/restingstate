@@ -91,4 +91,4 @@ node tests/compatibility/compare.mjs js-out.json rs-out.json
 |-----------|---------|
 | xstate.js (target) | v5 |
 | OXC parser | 0.77.x |
-| Rust MSRV | 1.75+ |
+| Rust MSRV | 1.97 |

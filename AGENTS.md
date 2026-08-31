@@ -250,7 +250,7 @@ The xstate.js source is vendored as a git submodule at `tests/compatibility/xsta
 
 - **XState v5**: pin exact version in `packages/package.json`
 - **OXC**: 0.77.x
-- **Rust MSRV**: TBD (likely 1.75+)
+- **Rust MSRV**: 1.97 (edition 2024, toolchain pinned via `rust-toolchain.toml`)
 
 ---
 

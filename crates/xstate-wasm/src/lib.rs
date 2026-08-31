@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
-use xstate_core::clock::Clock;
 use xstate_core::Interpreter;
+use xstate_core::clock::Clock;
 use xstate_ir::Machine;
 
 #[wasm_bindgen(start)]
@@ -59,16 +59,14 @@ impl JsMachine {
         let mut context = self.context.borrow_mut();
         let current_state = self.state.borrow().clone();
 
-        let guards = |name: &str,
-                      ctx: &serde_json::Value,
-                      _event_payload: &serde_json::Value|
-         -> bool {
-            if let Some(val) = ctx.get(name) {
-                matches!(val, serde_json::Value::Bool(true))
-            } else {
-                true
-            }
-        };
+        let guards =
+            |name: &str, ctx: &serde_json::Value, _event_payload: &serde_json::Value| -> bool {
+                if let Some(val) = ctx.get(name) {
+                    matches!(val, serde_json::Value::Bool(true))
+                } else {
+                    true
+                }
+            };
 
         let mut actions =
             |_name: &str, _args: &[serde_json::Value], _event_payload: &serde_json::Value| {};
@@ -85,8 +83,7 @@ impl JsMachine {
         ) {
             Some(new_state) => {
                 *self.state.borrow_mut() = new_state;
-                let state_value =
-                    serde_json::to_value(&*self.state.borrow()).unwrap_or_default();
+                let state_value = serde_json::to_value(&*self.state.borrow()).unwrap_or_default();
                 let snapshot = serde_json::json!({
                     "value": state_value,
                     "context": context.clone(),

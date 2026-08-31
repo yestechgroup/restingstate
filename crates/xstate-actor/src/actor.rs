@@ -2,9 +2,10 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use tokio::sync::mpsc;
 
-use xstate_core::clock::Clock;
 use xstate_core::Interpreter;
 use xstate_core::StateValue;
+use xstate_core::actor_logic::ActorLogic;
+use xstate_core::clock::Clock;
 use xstate_ir::{StateNode, StateType};
 
 use crate::handle::{ActorHandle, ActorStatus};
@@ -53,7 +54,7 @@ pub(crate) struct SpawnRequest {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_actor(
     interpreter: Interpreter,
-    clock: impl Clock + Send + 'static,
+    clock: impl Clock + 'static,
     parent_id: String,
     actor_id: String,
     initial_state: Option<StateValue>,
@@ -154,18 +155,18 @@ pub(crate) fn spawn_actor(
                         &clock,
                     );
 
-                    if let Some(ref new_state) = new_state {
-                        if is_final_state(new_state, &interpreter.machine().states) {
-                            *status_clone.write().unwrap() = ActorStatus::Done;
-                            let done_event = serde_json::json!({
-                                "type": format!("done.invoke.{}", actor_id)
-                            });
-                            let _ = outgoing.send(ActorMessage {
-                                target: parent_id.clone(),
-                                event: done_event,
-                            });
-                            break;
-                        }
+                    if let Some(ref new_state) = new_state
+                        && is_final_state(new_state, &interpreter.machine().states)
+                    {
+                        *status_clone.write().unwrap() = ActorStatus::Done;
+                        let done_event = serde_json::json!({
+                            "type": format!("done.invoke.{}", actor_id)
+                        });
+                        let _ = outgoing.send(ActorMessage {
+                            target: parent_id.clone(),
+                            event: done_event,
+                        });
+                        break;
                     }
 
                     if let Some(s) = new_state {
@@ -215,4 +216,80 @@ impl ActorHandle for ActorHandleImpl {
     fn status(&self) -> ActorStatus {
         *self.status.read().unwrap()
     }
+}
+
+struct LogicHandleImpl {
+    snapshot: Arc<RwLock<serde_json::Value>>,
+    sender: mpsc::UnboundedSender<ActorCommand>,
+    status: Arc<RwLock<ActorStatus>>,
+}
+
+impl ActorHandle for LogicHandleImpl {
+    fn send(&self, event: serde_json::Value) {
+        let _ = self.sender.send(ActorCommand::Event(event));
+    }
+
+    fn stop(&self) {
+        let _ = self.sender.send(ActorCommand::Stop);
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        self.snapshot.read().unwrap().clone()
+    }
+
+    fn status(&self) -> ActorStatus {
+        *self.status.read().unwrap()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn spawn_actor_logic(
+    mut logic: Box<dyn ActorLogic>,
+    _parent_id: String,
+    _actor_id: String,
+    on_stop: impl Fn() + Send + 'static,
+    _outgoing: mpsc::UnboundedSender<ActorMessage>,
+    _spawn_tx: mpsc::UnboundedSender<SpawnRequest>,
+) -> Box<dyn ActorHandle> {
+    let initial_snapshot = logic.initial_snapshot();
+    let snapshot = Arc::new(RwLock::new(initial_snapshot));
+    let status = Arc::new(RwLock::new(ActorStatus::Running));
+
+    let (tx, mut rx) = mpsc::unbounded_channel::<ActorCommand>();
+
+    let snapshot_clone = snapshot.clone();
+    let status_clone = status.clone();
+
+    tokio::spawn(async move {
+        let mut current_snapshot = snapshot_clone.read().unwrap().clone();
+
+        loop {
+            let cmd = rx.recv().await;
+            match cmd {
+                Some(ActorCommand::Stop) => {
+                    logic.stop();
+                    on_stop();
+                    *status_clone.write().unwrap() = ActorStatus::Stopped;
+                    break;
+                }
+                Some(ActorCommand::Event(event)) => {
+                    let current_status = *status_clone.read().unwrap();
+                    if current_status != ActorStatus::Running {
+                        continue;
+                    }
+
+                    let _output_events = logic.receive(event, &mut current_snapshot);
+
+                    *snapshot_clone.write().unwrap() = current_snapshot.clone();
+                }
+                None => break,
+            }
+        }
+    });
+
+    Box::new(LogicHandleImpl {
+        snapshot,
+        sender: tx,
+        status,
+    })
 }

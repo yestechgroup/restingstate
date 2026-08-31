@@ -2,7 +2,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use xstate_ir::{Action, Machine, StateNode, StateType};
 
+use crate::actions::ActionRegistry;
 use crate::clock::Clock;
+use crate::guards::GuardRegistry;
 use crate::state_value::StateValue;
 
 fn run_action(
@@ -15,12 +17,11 @@ fn run_action(
     if action.name == "assign" {
         let chunks = action.args.chunks(2);
         for chunk in chunks {
-            if chunk.len() == 2 {
-                if let Some(key_str) = chunk[0].as_str() {
-                    if let Some(obj) = context.as_object_mut() {
-                        obj.insert(key_str.to_string(), chunk[1].clone());
-                    }
-                }
+            if chunk.len() == 2
+                && let Some(key_str) = chunk[0].as_str()
+                && let Some(obj) = context.as_object_mut()
+            {
+                obj.insert(key_str.to_string(), chunk[1].clone());
             }
         }
     }
@@ -64,10 +65,10 @@ impl Interpreter {
         self.entry_times.borrow_mut().insert(node.name.clone(), 0);
         match &node.node_type {
             StateType::Compound => {
-                if let Some(initial_name) = &node.initial {
-                    if let Some(child) = node.children.iter().find(|c| &c.name == initial_name) {
-                        self.record_entry_time_for_node(child);
-                    }
+                if let Some(initial_name) = &node.initial
+                    && let Some(child) = node.children.iter().find(|c| &c.name == initial_name)
+                {
+                    self.record_entry_time_for_node(child);
                 }
             }
             StateType::Parallel => {
@@ -94,12 +95,12 @@ impl Interpreter {
         if !has_history {
             return;
         }
-        if let Some(initial_name) = &node.initial {
-            if let Some(child) = node.children.iter().find(|c| &c.name == initial_name) {
-                let value = self.resolve_initial_value(child);
-                self.history.borrow_mut().insert(node.name.clone(), value);
-                self.record_entry_history(child);
-            }
+        if let Some(initial_name) = &node.initial
+            && let Some(child) = node.children.iter().find(|c| &c.name == initial_name)
+        {
+            let value = self.resolve_initial_value(child);
+            self.history.borrow_mut().insert(node.name.clone(), value);
+            self.record_entry_history(child);
         }
     }
 
@@ -116,10 +117,10 @@ impl Interpreter {
             )
         });
         let value = self.resolve_initial_value(node);
-        if node.node_type == StateType::Parallel {
-            if let StateValue::Compound { child, .. } = value {
-                return *child;
-            }
+        if node.node_type == StateType::Parallel
+            && let StateValue::Compound { child, .. } = value
+        {
+            return *child;
         }
         value
     }
@@ -279,11 +280,35 @@ impl Interpreter {
                 }
             }
         }
-        if changed {
-            Some(current)
-        } else {
-            None
-        }
+        if changed { Some(current) } else { None }
+    }
+
+    /// Like `send`, but uses `GuardRegistry` / `ActionRegistry` instead of closures.
+    pub fn send_with_registry(
+        &self,
+        state: &StateValue,
+        event: &serde_json::Value,
+        context: &mut serde_json::Value,
+        guards: &GuardRegistry,
+        actions: &ActionRegistry,
+        clock: &dyn Clock,
+    ) -> Option<StateValue> {
+        // SAFETY: We take a raw pointer to `context` so the actions closure can
+        // access it without capturing `context` (which is already borrowed by
+        // `send`). The closures are called sequentially by `send` (never
+        // re-entrantly), so there is no data race.
+        let raw = context as *mut serde_json::Value;
+        self.send(
+            state,
+            event,
+            context,
+            &|name, ctx, evt| guards.evaluate(name, ctx, evt),
+            &mut |name, args, evt| {
+                // SAFETY: `raw` points to the same `context` that `send` borrows.
+                unsafe { actions.dispatch(name, args, evt, &mut *raw) };
+            },
+            clock,
+        )
     }
 
     fn resolve_always(
@@ -342,10 +367,10 @@ impl Interpreter {
                 if now < entered_at + delay_ms {
                     continue;
                 }
-                if let Some(ref guard) = transition.guard {
-                    if !guards(&guard.name, context, &serde_json::Value::Null) {
-                        continue;
-                    }
+                if let Some(ref guard) = transition.guard
+                    && !guards(&guard.name, context, &serde_json::Value::Null)
+                {
+                    continue;
                 }
                 if let Some(ref target_name) = transition.target {
                     let (target_path, target_value) = self.build_target(target_name)?;
@@ -447,10 +472,10 @@ impl Interpreter {
             }
 
             for transition in &parent.on_done {
-                if let Some(ref guard) = transition.guard {
-                    if !guards(&guard.name, context, &serde_json::Value::Null) {
-                        continue;
-                    }
+                if let Some(ref guard) = transition.guard
+                    && !guards(&guard.name, context, &serde_json::Value::Null)
+                {
+                    continue;
                 }
 
                 if !transition.targets.is_empty() {
@@ -496,47 +521,47 @@ impl Interpreter {
 
                         return Some(target_value);
                     }
-                } else if let Some(ref target_name) = transition.target {
-                    if let Some((target_path, target_value)) = self.build_target(target_name) {
-                        let common_prefix = path
-                            .iter()
-                            .zip(target_path.iter())
-                            .take_while(|(s, t)| s.name == t.name)
-                            .count();
+                } else if let Some(ref target_name) = transition.target
+                    && let Some((target_path, target_value)) = self.build_target(target_name)
+                {
+                    let common_prefix = path
+                        .iter()
+                        .zip(target_path.iter())
+                        .take_while(|(s, t)| s.name == t.name)
+                        .count();
 
-                        for n in path[common_prefix..].iter().rev() {
-                            for action_name in &n.exit {
-                                run_action_by_name(
-                                    action_name,
-                                    &serde_json::Value::Null,
-                                    context,
-                                    actions,
-                                );
-                            }
+                    for n in path[common_prefix..].iter().rev() {
+                        for action_name in &n.exit {
+                            run_action_by_name(
+                                action_name,
+                                &serde_json::Value::Null,
+                                context,
+                                actions,
+                            );
                         }
-
-                        let now = clock.now_ms();
-                        for n in &target_path[common_prefix..] {
-                            self.entry_times.borrow_mut().insert(n.name.clone(), now);
-                        }
-
-                        for action in &transition.actions {
-                            run_action(action, &serde_json::Value::Null, context, actions);
-                        }
-
-                        for n in &target_path[common_prefix..] {
-                            for action_name in &n.entry {
-                                run_action_by_name(
-                                    action_name,
-                                    &serde_json::Value::Null,
-                                    context,
-                                    actions,
-                                );
-                            }
-                        }
-
-                        return Some(target_value);
                     }
+
+                    let now = clock.now_ms();
+                    for n in &target_path[common_prefix..] {
+                        self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                    }
+
+                    for action in &transition.actions {
+                        run_action(action, &serde_json::Value::Null, context, actions);
+                    }
+
+                    for n in &target_path[common_prefix..] {
+                        for action_name in &n.entry {
+                            run_action_by_name(
+                                action_name,
+                                &serde_json::Value::Null,
+                                context,
+                                actions,
+                            );
+                        }
+                    }
+
+                    return Some(target_value);
                 }
             }
         }
@@ -810,10 +835,10 @@ impl Interpreter {
             if transition.event != event {
                 continue;
             }
-            if let Some(ref guard) = transition.guard {
-                if !guards(&guard.name, context, event_payload) {
-                    continue;
-                }
+            if let Some(ref guard) = transition.guard
+                && !guards(&guard.name, context, event_payload)
+            {
+                continue;
             }
             if let Some(ref target_name) = transition.target {
                 let target = transition_scope
@@ -911,10 +936,10 @@ impl Interpreter {
                 if transition.event != event {
                     continue;
                 }
-                if let Some(ref guard) = transition.guard {
-                    if !guards(&guard.name, context, event_payload) {
-                        continue;
-                    }
+                if let Some(ref guard) = transition.guard
+                    && !guards(&guard.name, context, event_payload)
+                {
+                    continue;
                 }
 
                 if !transition.targets.is_empty() {
@@ -1170,13 +1195,12 @@ impl Interpreter {
     }
 
     fn expand_initial_path<'a>(&self, node: &'a StateNode, path: &mut Vec<&'a StateNode>) {
-        if node.node_type == StateType::Compound {
-            if let Some(initial_name) = &node.initial {
-                if let Some(child) = node.children.iter().find(|c| &c.name == initial_name) {
-                    path.push(child);
-                    self.expand_initial_path(child, path);
-                }
-            }
+        if node.node_type == StateType::Compound
+            && let Some(initial_name) = &node.initial
+            && let Some(child) = node.children.iter().find(|c| &c.name == initial_name)
+        {
+            path.push(child);
+            self.expand_initial_path(child, path);
         }
     }
 
@@ -1206,12 +1230,10 @@ impl Interpreter {
                     StateValue::Atomic(node.name.clone())
                 };
 
-                if has_history_child {
-                    if let StateValue::Compound { child, .. } = &result {
-                        self.history
-                            .borrow_mut()
-                            .insert(node.name.clone(), *child.clone());
-                    }
+                if has_history_child && let StateValue::Compound { child, .. } = &result {
+                    self.history
+                        .borrow_mut()
+                        .insert(node.name.clone(), *child.clone());
                 }
 
                 result

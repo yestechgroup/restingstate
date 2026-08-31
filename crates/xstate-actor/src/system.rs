@@ -3,11 +3,12 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc;
 
-use xstate_core::clock::{Clock, MockClock};
 use xstate_core::Interpreter;
+use xstate_core::actor_logic::ActorLogic;
+use xstate_core::clock::{Clock, MockClock};
 use xstate_ir::Machine;
 
-use crate::actor::{spawn_actor, ActorMessage, SpawnRequest};
+use crate::actor::{ActorMessage, SpawnRequest, spawn_actor, spawn_actor_logic};
 use crate::handle::{ActorHandle, ActorStatus};
 
 fn stop_descendants(
@@ -133,7 +134,7 @@ impl ActorSystem {
     pub fn spawn(
         &self,
         interpreter: Interpreter,
-        clock: impl Clock + Send + 'static,
+        clock: impl Clock + 'static,
         id: String,
     ) -> String {
         let handle = spawn_actor(
@@ -151,13 +152,34 @@ impl ActorSystem {
         id
     }
 
+    /// Spawn an actor from any `ActorLogic` implementation. Returns the actor's ID.
+    pub fn spawn_logic(&self, logic: Box<dyn ActorLogic>, id: String) -> String {
+        let actors = self.actors.clone();
+        let children = self.children.clone();
+        let actor_id = id.clone();
+        let on_stop = move || {
+            stop_descendants(&actors, &children, &actor_id);
+        };
+
+        let handle = spawn_actor_logic(
+            logic,
+            String::new(),
+            id.clone(),
+            on_stop,
+            self.outgoing_tx.clone(),
+            self.spawn_tx.clone(),
+        );
+        self.actors.lock().unwrap().insert(id.clone(), handle);
+        id
+    }
+
     /// Spawn an actor as a child of a parent. Used when an actor needs to
     /// route `send_parent` messages to a known parent.
     #[allow(dead_code)]
     pub(crate) fn spawn_child(
         &self,
         interpreter: Interpreter,
-        clock: impl Clock + Send + 'static,
+        clock: impl Clock + 'static,
         id: String,
         parent_id: String,
     ) -> String {
@@ -181,7 +203,7 @@ impl ActorSystem {
     pub fn spawn_with_parent(
         &self,
         interpreter: Interpreter,
-        clock: impl Clock + Send + 'static,
+        clock: impl Clock + 'static,
         id: String,
         parent_id: Option<String>,
     ) -> String {
@@ -221,7 +243,7 @@ impl ActorSystem {
     pub fn spawn_with_state(
         &self,
         interpreter: Interpreter,
-        clock: impl Clock + Send + 'static,
+        clock: impl Clock + 'static,
         id: String,
         initial_state: xstate_core::StateValue,
         initial_context: serde_json::Value,

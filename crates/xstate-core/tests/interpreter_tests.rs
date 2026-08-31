@@ -1,6 +1,6 @@
-use xstate_core::clock::MockClock;
 use xstate_core::Interpreter;
 use xstate_core::StateValue;
+use xstate_core::clock::MockClock;
 use xstate_ir::{
     Action, ContextField, ContextSchema, Guard, Machine, StateNode, StateType, Transition,
 };

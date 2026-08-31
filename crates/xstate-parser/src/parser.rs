@@ -299,7 +299,7 @@ fn extract_machine(program: &Program) -> Result<Machine, ParseError> {
     for stmt in program.body.iter() {
         match find_create_machine_in_stmt(stmt) {
             SearchResult::Found(config, delays) => {
-                return extract_machine_from_config(config, &delays)
+                return extract_machine_from_config(config, &delays);
             }
             SearchResult::NotFound => {}
         }
@@ -326,7 +326,7 @@ fn find_create_machine_in_stmt<'a>(stmt: &'a Statement<'a>) -> SearchResult<'a> 
                 if let Some(init) = &decl.init {
                     match find_create_machine_in_expr(init) {
                         SearchResult::Found(config, delays) => {
-                            return SearchResult::Found(config, delays)
+                            return SearchResult::Found(config, delays);
                         }
                         SearchResult::NotFound => {}
                     }
@@ -360,7 +360,7 @@ fn find_create_machine_in_declaration<'a>(decl: &'a Declaration<'a>) -> SearchRe
                 if let Some(init) = &declarator.init {
                     match find_create_machine_in_expr(init) {
                         SearchResult::Found(config, delays) => {
-                            return SearchResult::Found(config, delays)
+                            return SearchResult::Found(config, delays);
                         }
                         SearchResult::NotFound => {}
                     }
@@ -557,10 +557,10 @@ fn property_key_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
     if let PropertyKey::StringLiteral(s) = key {
         return Some(s.value.as_ref());
     }
-    if let PropertyKey::NumericLiteral(n) = key {
-        if let Some(ref raw) = n.raw {
-            return Some(raw.as_ref());
-        }
+    if let PropertyKey::NumericLiteral(n) = key
+        && let Some(ref raw) = n.raw
+    {
+        return Some(raw.as_ref());
     }
     None
 }
@@ -573,12 +573,11 @@ trait ObjectExpressionExt {
 impl<'a> ObjectExpressionExt for ObjectExpression<'a> {
     fn get_object_prop_value(&self, key: &str) -> Option<&Expression<'a>> {
         for prop in self.properties.iter() {
-            if let ObjectPropertyKind::ObjectProperty(p) = prop {
-                if let Some(name) = property_key_name(&p.key) {
-                    if name == key {
-                        return Some(&p.value);
-                    }
-                }
+            if let ObjectPropertyKind::ObjectProperty(p) = prop
+                && let Some(name) = property_key_name(&p.key)
+                && name == key
+            {
+                return Some(&p.value);
             }
         }
         None
@@ -1021,7 +1020,7 @@ fn extract_after_transitions(
     let mut transitions = Vec::new();
 
     for prop in after_obj.properties.iter() {
-        let ObjectPropertyKind::ObjectProperty(ref obj_prop) = prop else {
+        let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
             continue;
         };
 
