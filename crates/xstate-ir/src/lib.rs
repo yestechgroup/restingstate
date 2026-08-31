@@ -1,7 +1,9 @@
+pub mod actors;
 pub mod machine;
 pub mod state;
 pub mod transition;
 
+pub use actors::{ActionDef, ActorDef, GuardDef, SetupConfig};
 pub use machine::{ContextField, ContextSchema, Machine};
 pub use state::{InvokeConfig, StateNode, StateType};
 pub use transition::{Action, Guard, Transition};
@@ -61,6 +63,7 @@ mod tests {
                     tags: vec!["initial".into()],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "processing".into(),
@@ -96,6 +99,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                         StateNode {
                             name: "capture".into(),
@@ -117,12 +121,14 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "done".into(),
@@ -136,8 +142,11 @@ mod tests {
                     tags: vec!["terminal".into()],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
         let json = serde_json::to_string_pretty(&machine).unwrap();
         let round_tripped: Machine = serde_json::from_str(&json).unwrap();

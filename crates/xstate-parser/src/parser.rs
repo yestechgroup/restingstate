@@ -7,8 +7,8 @@ use oxc_span::SourceType;
 
 use crate::error::ParseError;
 use xstate_ir::{
-    Action, ContextField, ContextSchema, Guard, InvokeConfig, Machine, StateNode, StateType,
-    Transition,
+    Action, ActionDef, ActorDef, ContextField, ContextSchema, Guard, GuardDef, InvokeConfig,
+    Machine, SetupConfig, StateNode, StateType, Transition,
 };
 
 pub fn parse(source: &str) -> Result<Machine, ParseError> {
@@ -203,8 +203,8 @@ fn collect_from_call<'a>(
     call: &'a CallExpression<'a>,
     machines: &mut Vec<Machine>,
 ) -> Result<(), ParseError> {
-    if let Some((config, delays)) = try_get_machine_config(call) {
-        push_machine_lenient(config, &delays, machines);
+    if let Some((config, setup)) = try_get_machine_config(call) {
+        push_machine_lenient(config, &setup, machines);
     }
     // Recurse into arguments (they may contain nested createMachine calls)
     for arg in call.arguments.iter() {
@@ -234,18 +234,14 @@ fn collect_from_argument<'a>(
 /// inside `it(...)`/`describe(...)` callback bodies) and is lenient per
 /// machine: a machine missing `id`/`initial` gets a synthesized id and its
 /// first state as initial, matching XState's default behaviour.
-fn push_machine_lenient(
-    config: &ObjectExpression,
-    delays: &HashMap<String, u64>,
-    out: &mut Vec<Machine>,
-) {
+fn push_machine_lenient(config: &ObjectExpression, setup: &SetupConfig, out: &mut Vec<Machine>) {
     let id = extract_string_prop(config, "id").unwrap_or_else(|| format!("machine-{}", out.len()));
 
     let states = config
         .get_object_prop_value("states")
         .and_then(|expr| match expr {
             Expression::ObjectExpression(states_obj) => {
-                extract_states_object(states_obj, delays).ok()
+                extract_states_object(states_obj, &setup.delays).ok()
             }
             _ => None,
         })
@@ -271,11 +267,18 @@ fn push_machine_lenient(
         })
         .unwrap_or_else(|| ContextSchema { fields: vec![] });
 
+    let setup_config = if setup.is_empty() {
+        None
+    } else {
+        Some(setup.clone())
+    };
+
     let mut machine = Machine {
         id,
         initial,
         context,
         states,
+        setup: setup_config,
     };
     infer_state_types(&mut machine.states);
     out.push(machine);
@@ -298,8 +301,8 @@ fn infer_state_types(states: &mut [StateNode]) {
 fn extract_machine(program: &Program) -> Result<Machine, ParseError> {
     for stmt in program.body.iter() {
         match find_create_machine_in_stmt(stmt) {
-            SearchResult::Found(config, delays) => {
-                return extract_machine_from_config(config, &delays);
+            SearchResult::Found(config, setup) => {
+                return extract_machine_from_config(config, &setup);
             }
             SearchResult::NotFound => {}
         }
@@ -311,7 +314,7 @@ fn extract_machine(program: &Program) -> Result<Machine, ParseError> {
 }
 
 enum SearchResult<'a> {
-    Found(&'a ObjectExpression<'a>, HashMap<String, u64>),
+    Found(&'a ObjectExpression<'a>, SetupConfig),
     NotFound,
 }
 
@@ -325,8 +328,8 @@ fn find_create_machine_in_stmt<'a>(stmt: &'a Statement<'a>) -> SearchResult<'a> 
             for decl in vd.declarations.iter() {
                 if let Some(init) = &decl.init {
                     match find_create_machine_in_expr(init) {
-                        SearchResult::Found(config, delays) => {
-                            return SearchResult::Found(config, delays);
+                        SearchResult::Found(config, setup) => {
+                            return SearchResult::Found(config, setup);
                         }
                         SearchResult::NotFound => {}
                     }
@@ -359,8 +362,8 @@ fn find_create_machine_in_declaration<'a>(decl: &'a Declaration<'a>) -> SearchRe
             for declarator in vd.declarations.iter() {
                 if let Some(init) = &declarator.init {
                     match find_create_machine_in_expr(init) {
-                        SearchResult::Found(config, delays) => {
-                            return SearchResult::Found(config, delays);
+                        SearchResult::Found(config, setup) => {
+                            return SearchResult::Found(config, setup);
                         }
                         SearchResult::NotFound => {}
                     }
@@ -392,7 +395,7 @@ fn find_create_machine_in_expr<'a>(expr: &'a Expression<'a>) -> SearchResult<'a>
 
 fn try_extract_create_machine_config<'a>(
     expr: &'a Expression<'a>,
-) -> Option<(&'a ObjectExpression<'a>, HashMap<String, u64>)> {
+) -> Option<(&'a ObjectExpression<'a>, SetupConfig)> {
     let call = match expr {
         Expression::CallExpression(call) => call,
         _ => return None,
@@ -402,7 +405,7 @@ fn try_extract_create_machine_config<'a>(
 
 fn try_get_machine_config<'a>(
     call: &'a CallExpression<'a>,
-) -> Option<(&'a ObjectExpression<'a>, HashMap<String, u64>)> {
+) -> Option<(&'a ObjectExpression<'a>, SetupConfig)> {
     let is_create = match &call.callee {
         Expression::Identifier(ident) => ident.name.as_ref() == "createMachine",
         Expression::StaticMemberExpression(member) => {
@@ -424,30 +427,30 @@ fn try_get_machine_config<'a>(
             _ => None,
         })?;
 
-    let delays = if let Expression::StaticMemberExpression(member) = &call.callee {
+    let setup = if let Expression::StaticMemberExpression(member) = &call.callee {
         if let Expression::CallExpression(setup_call) = &member.object {
             if let Expression::Identifier(ident) = &setup_call.callee {
                 if ident.name.as_ref() == "setup" {
-                    extract_delays_from_setup_params(setup_call)
+                    extract_setup_config(setup_call)
                 } else {
-                    HashMap::new()
+                    SetupConfig::default()
                 }
             } else {
-                HashMap::new()
+                SetupConfig::default()
             }
         } else {
-            HashMap::new()
+            SetupConfig::default()
         }
     } else {
-        HashMap::new()
+        SetupConfig::default()
     };
 
-    Some((config, delays))
+    Some((config, setup))
 }
 
 fn extract_machine_from_config(
     obj: &ObjectExpression,
-    delays: &HashMap<String, u64>,
+    setup: &SetupConfig,
 ) -> Result<Machine, ParseError> {
     let id = extract_string_prop(obj, "id")
         .ok_or_else(|| ParseError::InvalidMachine("Machine missing 'id'".into()))?;
@@ -467,30 +470,168 @@ fn extract_machine_from_config(
         .get_object_prop_value("states")
         .and_then(|expr| match expr {
             Expression::ObjectExpression(states_obj) => {
-                Some(extract_states_object(states_obj, delays))
+                Some(extract_states_object(states_obj, &setup.delays))
             }
             _ => None,
         })
         .transpose()?
         .unwrap_or_default();
 
+    let setup_config = if setup.is_empty() {
+        None
+    } else {
+        Some(setup.clone())
+    };
+
     Ok(Machine {
         id,
         initial,
         context,
         states,
+        setup: setup_config,
     })
 }
 
-fn extract_delays_from_setup_params(call: &CallExpression) -> HashMap<String, u64> {
-    let mut delays = HashMap::new();
-
-    let setup_config = call.arguments.first().and_then(|arg| arg.as_expression());
-
-    let setup_config = match setup_config {
+fn extract_setup_config(call: &CallExpression) -> SetupConfig {
+    let setup_arg = match call.arguments.first().and_then(|arg| arg.as_expression()) {
         Some(Expression::ObjectExpression(obj)) => obj,
-        _ => return delays,
+        _ => return SetupConfig::default(),
     };
+
+    let actors = extract_actors_from_setup(setup_arg);
+    let guards = extract_guards_from_setup(setup_arg);
+    let actions = extract_actions_from_setup(setup_arg);
+    let delays = extract_delays_from_setup(setup_arg);
+
+    SetupConfig {
+        actors,
+        guards,
+        actions,
+        delays,
+    }
+}
+
+fn extract_actors_from_setup(setup_config: &ObjectExpression) -> HashMap<String, ActorDef> {
+    let mut actors = HashMap::new();
+
+    let actors_obj = match setup_config.get_object_prop_value("actors") {
+        Some(Expression::ObjectExpression(obj)) => obj,
+        _ => return actors,
+    };
+
+    for prop in actors_obj.properties.iter() {
+        let ObjectPropertyKind::ObjectProperty(p) = prop else {
+            continue;
+        };
+
+        let key_name = match property_key_name(&p.key) {
+            Some(n) => n.to_string(),
+            _ => continue,
+        };
+
+        // The value is typically a call expression like fromPromise(...), fromCallback(...), etc.
+        let actor_def = match &p.value {
+            Expression::CallExpression(call) => {
+                let callee_name = extract_callee_name(call);
+                match callee_name.as_deref() {
+                    Some("fromPromise") => ActorDef::FromPromise {
+                        src: key_name.clone(),
+                    },
+                    Some("fromCallback") => ActorDef::FromCallback {
+                        src: key_name.clone(),
+                    },
+                    Some("fromActorLogic") => ActorDef::FromActorLogic {
+                        src: key_name.clone(),
+                    },
+                    Some("fromMachine") => ActorDef::FromMachine {
+                        machine_id: key_name.clone(),
+                    },
+                    _ => ActorDef::FromActorLogic {
+                        src: key_name.clone(),
+                    },
+                }
+            }
+            _ => ActorDef::FromActorLogic {
+                src: key_name.clone(),
+            },
+        };
+
+        actors.insert(key_name, actor_def);
+    }
+
+    actors
+}
+
+fn extract_callee_name(call: &CallExpression) -> Option<String> {
+    match &call.callee {
+        Expression::Identifier(ident) => Some(ident.name.to_string()),
+        Expression::StaticMemberExpression(member) => Some(member.property.name.to_string()),
+        _ => None,
+    }
+}
+
+fn extract_guards_from_setup(setup_config: &ObjectExpression) -> HashMap<String, GuardDef> {
+    let mut guards = HashMap::new();
+
+    let guards_obj = match setup_config.get_object_prop_value("guards") {
+        Some(Expression::ObjectExpression(obj)) => obj,
+        _ => return guards,
+    };
+
+    for prop in guards_obj.properties.iter() {
+        let ObjectPropertyKind::ObjectProperty(p) = prop else {
+            continue;
+        };
+
+        let key_name = match property_key_name(&p.key) {
+            Some(n) => n.to_string(),
+            _ => continue,
+        };
+
+        guards.insert(
+            key_name.clone(),
+            GuardDef {
+                name: key_name,
+                params: vec![],
+            },
+        );
+    }
+
+    guards
+}
+
+fn extract_actions_from_setup(setup_config: &ObjectExpression) -> HashMap<String, ActionDef> {
+    let mut actions = HashMap::new();
+
+    let actions_obj = match setup_config.get_object_prop_value("actions") {
+        Some(Expression::ObjectExpression(obj)) => obj,
+        _ => return actions,
+    };
+
+    for prop in actions_obj.properties.iter() {
+        let ObjectPropertyKind::ObjectProperty(p) = prop else {
+            continue;
+        };
+
+        let key_name = match property_key_name(&p.key) {
+            Some(n) => n.to_string(),
+            _ => continue,
+        };
+
+        actions.insert(
+            key_name.clone(),
+            ActionDef {
+                name: key_name,
+                params: vec![],
+            },
+        );
+    }
+
+    actions
+}
+
+fn extract_delays_from_setup(setup_config: &ObjectExpression) -> HashMap<String, u64> {
+    let mut delays = HashMap::new();
 
     let delays_obj = match setup_config.get_object_prop_value("delays") {
         Some(Expression::ObjectExpression(obj)) => obj,
@@ -865,6 +1006,7 @@ fn extract_state_node(
         tags,
         invoke,
         on_done,
+        output: None,
     })
 }
 

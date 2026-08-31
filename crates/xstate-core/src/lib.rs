@@ -9,7 +9,7 @@ pub mod state_value;
 
 pub use actions::{ActionImpl, ActionRegistry};
 pub use actor_logic::{
-    ActorLogic, CallbackLogic, MachineLogic, PromiseLogic, ReducerLogic, Sender,
+    ActorLogic, ActorOutput, CallbackLogic, MachineLogic, PromiseLogic, ReducerLogic, Sender,
 };
 pub use clock::{Clock, InstantClock, MockClock};
 pub use guards::{GuardImpl, GuardRegistry};

@@ -15,6 +15,21 @@ type CallbackFn = dyn Fn(serde_json::Value, Sender) + Send + Sync;
 type PromiseFuture =
     dyn std::future::Future<Output = Result<serde_json::Value, serde_json::Value>> + Send + Sync;
 
+/// Structured output from an actor's receive() method.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ActorOutput {
+    /// No output.
+    None,
+    /// A raised event (internal to the actor).
+    RaisedEvent(serde_json::Value),
+    /// The actor's snapshot changed (for xstate.snapshot.* events).
+    SnapshotChanged(serde_json::Value),
+    /// A child actor should be spawned.
+    ChildSpawned { id: String, logic_name: String },
+    /// The actor is done (reached final state).
+    Done(Option<serde_json::Value>),
+}
+
 /// Core trait defining how an actor processes events.
 pub trait ActorLogic: Send + Sync {
     /// Human-readable name for debugging.
@@ -377,7 +392,10 @@ mod tests {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
         let interp = Interpreter::new(machine);
         let logic = MachineLogic::new(interp, crate::clock::MockClock::new(0));
@@ -412,7 +430,10 @@ mod tests {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
         let interp = Interpreter::new(machine);
         let logic = MachineLogic::new(interp, crate::clock::MockClock::new(0));
@@ -449,6 +470,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "on".into(),
@@ -470,8 +492,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
         let interp = Interpreter::new(machine);
         let mut logic = MachineLogic::new(interp, crate::clock::MockClock::new(0));

@@ -132,6 +132,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "active".into(),
@@ -153,8 +154,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
         serde_json::to_string(&machine).unwrap()
     }

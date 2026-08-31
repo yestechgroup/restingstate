@@ -35,6 +35,18 @@ fn is_final_state(state: &StateValue, states: &[StateNode]) -> bool {
     }
 }
 
+fn find_state_node<'a>(name: &str, states: &'a [StateNode]) -> Option<&'a StateNode> {
+    for state in states {
+        if state.name == name {
+            return Some(state);
+        }
+        if let Some(found) = find_state_node(name, &state.children) {
+            return Some(found);
+        }
+    }
+    None
+}
+
 enum ActorCommand {
     Event(serde_json::Value),
     Stop,
@@ -100,8 +112,8 @@ pub(crate) fn spawn_actor(
 
                     let outgoing_actions = outgoing.clone();
                     let parent_actions = parent_id.clone();
-                    let spawn_tx_actions = spawn_tx.clone();
-                    let my_id_actions = actor_id.clone();
+                    let spawn_tx_for_actions = spawn_tx.clone();
+                    let actor_id_for_actions = actor_id.clone();
                     let mut actions =
                         move |name: &str,
                               args: &[serde_json::Value],
@@ -135,9 +147,11 @@ pub(crate) fn spawn_actor(
                                         .get(1)
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string())
-                                        .unwrap_or_else(|| format!("{}.child", my_id_actions));
-                                    let _ = spawn_tx_actions.send(SpawnRequest {
-                                        parent_id: my_id_actions.clone(),
+                                        .unwrap_or_else(|| {
+                                            format!("{}.child", actor_id_for_actions)
+                                        });
+                                    let _ = spawn_tx_for_actions.send(SpawnRequest {
+                                        parent_id: actor_id_for_actions.clone(),
                                         machine_id,
                                         actor_id: child_actor_id,
                                     });
@@ -159,8 +173,10 @@ pub(crate) fn spawn_actor(
                         && is_final_state(new_state, &interpreter.machine().states)
                     {
                         *status_clone.write().unwrap() = ActorStatus::Done;
+                        let context = current_context.clone();
                         let done_event = serde_json::json!({
-                            "type": format!("done.invoke.{}", actor_id)
+                            "type": format!("done.invoke.{}", actor_id),
+                            "output": context,
                         });
                         let _ = outgoing.send(ActorMessage {
                             target: parent_id.clone(),
@@ -169,10 +185,36 @@ pub(crate) fn spawn_actor(
                         break;
                     }
 
-                    if let Some(s) = new_state {
-                        current_state = s;
+                    if let Some(ref s) = new_state {
+                        current_state = s.clone();
                         *state_clone.write().unwrap() = current_state.clone();
                         *context_clone.write().unwrap() = current_context.clone();
+                    }
+
+                    // After the transition, check for invoke config
+                    if let Some(ref new_state_val) = new_state {
+                        let state_name = match new_state_val {
+                            StateValue::Atomic(name) => name.clone(),
+                            StateValue::Compound { state, .. } => state.clone(),
+                            StateValue::Parallel { regions } => {
+                                regions.first().map(|(n, _)| n.clone()).unwrap_or_default()
+                            }
+                        };
+
+                        if let Some(state_node) =
+                            find_state_node(&state_name, &interpreter.machine().states)
+                            && let Some(ref invoke_config) = state_node.invoke
+                        {
+                            let invoke_id = invoke_config
+                                .id
+                                .clone()
+                                .unwrap_or_else(|| format!("{}.{}", actor_id, invoke_config.src));
+                            let _ = spawn_tx.send(SpawnRequest {
+                                parent_id: actor_id.clone(),
+                                machine_id: invoke_config.src.clone(),
+                                actor_id: invoke_id,
+                            });
+                        }
                     }
                 }
                 None => break,

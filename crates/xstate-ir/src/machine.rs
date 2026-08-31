@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::actors::SetupConfig;
 use crate::state::StateNode;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -8,6 +9,8 @@ pub struct Machine {
     pub initial: String,
     pub context: ContextSchema,
     pub states: Vec<StateNode>,
+    #[serde(default)]
+    pub setup: Option<SetupConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,6 +91,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "active".into(),
@@ -109,8 +113,10 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+            setup: None,
         };
         let json = serde_json::to_string_pretty(&machine).unwrap();
         let round_tripped: Machine = serde_json::from_str(&json).unwrap();
@@ -160,6 +166,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                         StateNode {
                             name: "stop".into(),
@@ -173,12 +180,14 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "green".into(),
@@ -200,6 +209,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "yellow".into(),
@@ -221,8 +231,10 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+            setup: None,
         };
         let json = serde_json::to_string_pretty(&machine).unwrap();
         let round_tripped: Machine = serde_json::from_str(&json).unwrap();
@@ -255,6 +267,7 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                     StateNode {
                         name: "rendering".into(),
@@ -268,13 +281,16 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                 ],
                 node_type: StateType::Parallel,
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+            setup: None,
         };
         let json = serde_json::to_string_pretty(&machine).unwrap();
         let round_tripped: Machine = serde_json::from_str(&json).unwrap();

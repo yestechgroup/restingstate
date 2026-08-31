@@ -31,6 +31,7 @@ fn toggle_machine() -> Machine {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "active".into(),
@@ -52,8 +53,11 @@ fn toggle_machine() -> Machine {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
         ],
+
+        setup: None,
     }
 }
 
@@ -135,6 +139,7 @@ fn toggle_machine_with_count_context() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "active".into(),
@@ -156,8 +161,11 @@ fn toggle_machine_with_count_context() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
         ],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let ctx = interpreter.initial_context();
@@ -207,6 +215,7 @@ fn traffic_light_compound_state() {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                     StateNode {
                         name: "stop".into(),
@@ -220,12 +229,14 @@ fn traffic_light_compound_state() {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                 ],
                 node_type: StateType::Compound,
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "green".into(),
@@ -239,8 +250,11 @@ fn traffic_light_compound_state() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
         ],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
@@ -347,6 +361,7 @@ fn transition_with_guard() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "submitted".into(),
@@ -360,6 +375,7 @@ fn transition_with_guard() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "error".into(),
@@ -373,8 +389,11 @@ fn transition_with_guard() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
         ],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
@@ -431,6 +450,7 @@ fn entry_exit_actions() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "active".into(),
@@ -452,8 +472,11 @@ fn entry_exit_actions() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
         ],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
@@ -509,6 +532,7 @@ fn transition_actions_order() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "active".into(),
@@ -522,8 +546,11 @@ fn transition_actions_order() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
         ],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
@@ -576,6 +603,7 @@ fn parallel_states_initial_value() {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "rendering".into(),
@@ -589,13 +617,17 @@ fn parallel_states_initial_value() {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
             node_type: StateType::Parallel,
             tags: vec![],
             invoke: None,
             on_done: vec![],
+            output: None,
         }],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
@@ -643,11 +675,13 @@ fn event_bubbling() {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 }],
                 node_type: StateType::Compound,
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "other".into(),
@@ -661,8 +695,11 @@ fn event_bubbling() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
         ],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
@@ -718,7 +755,10 @@ fn transition_with_no_target() {
             tags: vec![],
             invoke: None,
             on_done: vec![],
+            output: None,
         }],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
@@ -770,7 +810,10 @@ fn final_state_no_transitions() {
             tags: vec![],
             invoke: None,
             on_done: vec![],
+            output: None,
         }],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let initial = interpreter.initial_state();
@@ -825,6 +868,7 @@ fn assign_mutates_context() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "end".into(),
@@ -838,8 +882,11 @@ fn assign_mutates_context() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
         ],
+
+        setup: None,
     };
     let interpreter = Interpreter::new(machine);
     let state = interpreter.initial_state();

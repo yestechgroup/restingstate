@@ -1445,6 +1445,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "active".into(),
@@ -1469,8 +1470,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         }
     }
 
@@ -1585,6 +1589,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "processing".into(),
@@ -1617,6 +1622,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                         IrStateNode {
                             name: "capture".into(),
@@ -1638,12 +1644,14 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "done".into(),
@@ -1657,8 +1665,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         }
     }
 
@@ -1827,7 +1838,10 @@ mod tests {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -1940,6 +1954,7 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                     IrStateNode {
                         name: "rendering".into(),
@@ -1961,6 +1976,7 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                     IrStateNode {
                         name: "loaded".into(),
@@ -1974,6 +1990,7 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                     IrStateNode {
                         name: "rendered".into(),
@@ -1987,13 +2004,17 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                 ],
                 node_type: StateType::Parallel,
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         }
     }
 
@@ -2029,17 +2050,22 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 }],
                 node_type: StateType::Compound,
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -2086,6 +2112,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "end".into(),
@@ -2099,8 +2126,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -2163,11 +2193,13 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "other".into(),
@@ -2181,8 +2213,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -2241,6 +2276,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "b".into(),
@@ -2254,8 +2290,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -2313,6 +2352,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "b".into(),
@@ -2334,8 +2374,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -2399,6 +2442,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "auto".into(),
@@ -2420,6 +2464,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "done".into(),
@@ -2433,8 +2478,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -2491,6 +2539,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "check".into(),
@@ -2514,6 +2563,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "done".into(),
@@ -2527,8 +2577,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -2633,6 +2686,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                             description: None,
                             initial: None,
                         },
@@ -2646,6 +2700,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                             description: None,
                             initial: None,
                         },
@@ -2659,6 +2714,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                             description: None,
                             initial: None,
                         },
@@ -2667,6 +2723,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "other".into(),
@@ -2688,8 +2745,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -2775,6 +2835,7 @@ mod tests {
                         on_error: vec![],
                     }),
                     on_done: vec![],
+                    output: None,
                     children: vec![],
                     entry: vec![],
                     exit: vec![],
@@ -2788,6 +2849,7 @@ mod tests {
                     transitions: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                     children: vec![],
                     entry: vec![],
                     exit: vec![],
@@ -2796,6 +2858,8 @@ mod tests {
                     initial: None,
                 },
             ],
+
+            setup: None,
         };
         let interpreter = Interpreter::new(machine);
         let state = interpreter.initial_state();
@@ -2859,6 +2923,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                         IrStateNode {
                             name: "second".into(),
@@ -2872,6 +2937,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                         IrStateNode {
                             name: "hist".into(),
@@ -2885,12 +2951,14 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "off".into(),
@@ -2912,8 +2980,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         }
     }
 
@@ -3009,6 +3080,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "parent".into(),
@@ -3030,6 +3102,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                         IrStateNode {
                             name: "b".into(),
@@ -3043,14 +3116,18 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                     ],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -3105,6 +3182,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "a".into(),
@@ -3132,18 +3210,23 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         }],
                         node_type: StateType::Compound,
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -3220,6 +3303,7 @@ mod tests {
                                     tags: vec![],
                                     invoke: None,
                                     on_done: vec![],
+                                    output: None,
                                 },
                                 IrStateNode {
                                     name: "a2".into(),
@@ -3233,12 +3317,14 @@ mod tests {
                                     tags: vec![],
                                     invoke: None,
                                     on_done: vec![],
+                                    output: None,
                                 },
                             ],
                             node_type: StateType::Compound,
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                         IrStateNode {
                             name: "b".into(),
@@ -3260,6 +3346,7 @@ mod tests {
                                     tags: vec![],
                                     invoke: None,
                                     on_done: vec![],
+                                    output: None,
                                 },
                                 IrStateNode {
                                     name: "b2".into(),
@@ -3273,18 +3360,21 @@ mod tests {
                                     tags: vec![],
                                     invoke: None,
                                     on_done: vec![],
+                                    output: None,
                                 },
                             ],
                             node_type: StateType::Compound,
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                     ],
                     node_type: StateType::Parallel,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 IrStateNode {
                     name: "off".into(),
@@ -3298,8 +3388,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -3393,6 +3486,7 @@ mod tests {
                                 tags: vec![],
                                 invoke: None,
                                 on_done: vec![],
+                                output: None,
                             },
                             IrStateNode {
                                 name: "elsewhere".into(),
@@ -3406,23 +3500,29 @@ mod tests {
                                 tags: vec![],
                                 invoke: None,
                                 on_done: vec![],
+                                output: None,
                             },
                         ],
                         node_type: StateType::Compound,
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     }],
                     node_type: StateType::Compound,
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 }],
                 node_type: StateType::Parallel,
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);
@@ -3510,6 +3610,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                         IrStateNode {
                             name: "complete".into(),
@@ -3523,6 +3624,7 @@ mod tests {
                             tags: vec![],
                             invoke: None,
                             on_done: vec![],
+                            output: None,
                         },
                     ],
                     node_type: StateType::Compound,
@@ -3540,6 +3642,7 @@ mod tests {
                         description: None,
                         delay_ms: None,
                     }],
+                    output: None,
                 },
                 IrStateNode {
                     name: "loaded".into(),
@@ -3553,8 +3656,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let interpreter = Interpreter::new(machine);

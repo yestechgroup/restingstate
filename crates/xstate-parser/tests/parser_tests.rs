@@ -1,4 +1,4 @@
-use xstate_ir::StateType;
+use xstate_ir::{ActorDef, StateType};
 use xstate_parser::parse;
 
 macro_rules! fixture {
@@ -241,4 +241,111 @@ fn parse_invoke_machine() {
         Some("loader")
     );
     assert!(!loading.invoke.as_ref().unwrap().on_done.is_empty());
+}
+
+#[test]
+fn parse_setup_actors() {
+    let source = fixture!("setup-actors");
+    let machine = parse(&source).unwrap();
+
+    assert_eq!(machine.id, "withActors");
+    assert!(machine.setup.is_some());
+
+    let setup = machine.setup.as_ref().unwrap();
+    assert_eq!(setup.actors.len(), 2);
+    assert!(setup.guards.is_empty());
+    assert!(setup.actions.is_empty());
+    assert!(setup.delays.is_empty());
+
+    let loader = setup.actors.get("loader").unwrap();
+    assert_eq!(
+        *loader,
+        ActorDef::FromPromise {
+            src: "loader".into()
+        }
+    );
+
+    let timer = setup.actors.get("timer").unwrap();
+    assert_eq!(
+        *timer,
+        ActorDef::FromCallback {
+            src: "timer".into()
+        }
+    );
+}
+
+#[test]
+fn parse_setup_guards() {
+    let source = fixture!("setup-guards");
+    let machine = parse(&source).unwrap();
+
+    assert_eq!(machine.id, "withGuards");
+    assert!(machine.setup.is_some());
+
+    let setup = machine.setup.as_ref().unwrap();
+    assert!(setup.actors.is_empty());
+    assert_eq!(setup.guards.len(), 2);
+    assert!(setup.actions.is_empty());
+    assert!(setup.delays.is_empty());
+
+    let is_valid = setup.guards.get("isValid").unwrap();
+    assert_eq!(is_valid.name, "isValid");
+    assert!(is_valid.params.is_empty());
+
+    let is_adult = setup.guards.get("isAdult").unwrap();
+    assert_eq!(is_adult.name, "isAdult");
+}
+
+#[test]
+fn parse_setup_actions() {
+    let source = fixture!("setup-actions");
+    let machine = parse(&source).unwrap();
+
+    assert_eq!(machine.id, "withActions");
+    assert!(machine.setup.is_some());
+
+    let setup = machine.setup.as_ref().unwrap();
+    assert!(setup.actors.is_empty());
+    assert!(setup.guards.is_empty());
+    assert_eq!(setup.actions.len(), 2);
+    assert!(setup.delays.is_empty());
+
+    let assign_count = setup.actions.get("assignCount").unwrap();
+    assert_eq!(assign_count.name, "assignCount");
+    assert!(assign_count.params.is_empty());
+
+    let log_event = setup.actions.get("logEvent").unwrap();
+    assert_eq!(log_event.name, "logEvent");
+}
+
+#[test]
+fn parse_setup_full() {
+    let source = fixture!("setup-full");
+    let machine = parse(&source).unwrap();
+
+    assert_eq!(machine.id, "fullSetup");
+    assert!(machine.setup.is_some());
+
+    let setup = machine.setup.as_ref().unwrap();
+    assert_eq!(setup.actors.len(), 1);
+    assert_eq!(setup.guards.len(), 1);
+    assert_eq!(setup.actions.len(), 1);
+    assert_eq!(setup.delays.len(), 1);
+
+    let loader = setup.actors.get("loader").unwrap();
+    assert_eq!(
+        *loader,
+        ActorDef::FromPromise {
+            src: "loader".into()
+        }
+    );
+
+    let is_valid = setup.guards.get("isValid").unwrap();
+    assert_eq!(is_valid.name, "isValid");
+
+    let assign_count = setup.actions.get("assignCount").unwrap();
+    assert_eq!(assign_count.name, "assignCount");
+
+    let timeout = setup.delays.get("timeout").unwrap();
+    assert_eq!(*timeout, 2000);
 }

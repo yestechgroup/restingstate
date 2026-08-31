@@ -303,6 +303,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "active".into(),
@@ -324,8 +325,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let tokens = generate(&machine).unwrap();
@@ -395,6 +399,7 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                     StateNode {
                         name: "stop".into(),
@@ -408,13 +413,17 @@ mod tests {
                         tags: vec![],
                         invoke: None,
                         on_done: vec![],
+                        output: None,
                     },
                 ],
                 node_type: StateType::Compound,
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
 
         let tokens = generate(&machine).unwrap();
@@ -448,7 +457,10 @@ mod tests {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
 
         let tokens = generate(&machine).unwrap();
@@ -495,7 +507,10 @@ mod tests {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
 
         let tokens = generate(&machine).unwrap();
@@ -537,7 +552,10 @@ mod tests {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
 
         let result = generate(&machine);
@@ -570,7 +588,10 @@ mod tests {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             }],
+
+            setup: None,
         };
 
         let tokens = generate(&machine).unwrap();
@@ -613,6 +634,7 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
                 StateNode {
                     name: "active".into(),
@@ -634,8 +656,11 @@ mod tests {
                     tags: vec![],
                     invoke: None,
                     on_done: vec![],
+                    output: None,
                 },
             ],
+
+            setup: None,
         };
 
         let tokens = generate(&machine).unwrap();

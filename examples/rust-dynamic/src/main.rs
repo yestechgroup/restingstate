@@ -35,6 +35,7 @@ fn main() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
             StateNode {
                 name: "active".into(),
@@ -56,8 +57,11 @@ fn main() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
             },
         ],
+
+        setup: None,
     };
 
     let interpreter = Interpreter::new(machine);

@@ -31,6 +31,7 @@ fn golden_simple_toggle() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
             StateNode {
@@ -52,9 +53,12 @@ fn golden_simple_toggle() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
         ],
+
+        setup: None,
     };
 
     let output = generate(&machine).unwrap().to_string();
@@ -132,6 +136,7 @@ fn golden_traffic_light() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
             StateNode {
@@ -153,6 +158,7 @@ fn golden_traffic_light() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
             StateNode {
@@ -174,9 +180,12 @@ fn golden_traffic_light() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
         ],
+
+        setup: None,
     };
 
     let output = generate(&machine).unwrap().to_string();
@@ -249,8 +258,11 @@ fn golden_with_context() {
             tags: vec![],
             invoke: None,
             on_done: vec![],
+            output: None,
             description: None,
         }],
+
+        setup: None,
     };
 
     let output = generate(&machine).unwrap().to_string();
@@ -306,6 +318,7 @@ fn golden_with_guards() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
             StateNode {
@@ -319,9 +332,12 @@ fn golden_with_guards() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
         ],
+
+        setup: None,
     };
 
     let output = generate(&machine).unwrap().to_string();
@@ -375,6 +391,7 @@ fn golden_with_entry_exit_actions() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
             StateNode {
@@ -388,9 +405,12 @@ fn golden_with_entry_exit_actions() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
         ],
+
+        setup: None,
     };
 
     let output = generate(&machine).unwrap().to_string();
@@ -458,6 +478,7 @@ fn golden_excludes_delayed_transitions_from_event_enum() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
             StateNode {
@@ -471,9 +492,12 @@ fn golden_excludes_delayed_transitions_from_event_enum() {
                 tags: vec![],
                 invoke: None,
                 on_done: vec![],
+                output: None,
                 description: None,
             },
         ],
+
+        setup: None,
     };
 
     let output = generate(&machine).unwrap().to_string();
