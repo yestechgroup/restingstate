@@ -56,6 +56,27 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_assign_envelope_round_trip() {
+        let action = Action {
+            name: "assign".into(),
+            args: vec![serde_json::json!({
+                "$assign_ops": [
+                    { "op": "add", "field": "count", "value": 1 },
+                    { "op": "set", "field": "last", "from": "event.value" },
+                    { "op": "set", "field": "nested.key", "value": "deep" }
+                ]
+            })],
+        };
+        let json = serde_json::to_string(&action).unwrap();
+        let round_tripped: Action = serde_json::from_str(&json).unwrap();
+        assert_eq!(action, round_tripped);
+        assert_eq!(
+            round_tripped.args[0]["$assign_ops"][0]["op"],
+            serde_json::json!("add")
+        );
+    }
+
+    #[test]
     fn guard_round_trip() {
         let guard = Guard {
             name: "isAdmin".into(),

@@ -7,6 +7,8 @@ use crate::clock::Clock;
 use crate::guards::GuardRegistry;
 use crate::state_value::StateValue;
 
+const ASSIGN_OPS_KEY: &str = "$assign_ops";
+
 fn run_action(
     action: &Action,
     event_payload: &serde_json::Value,
@@ -15,15 +17,122 @@ fn run_action(
 ) {
     actions(&action.name, &action.args, event_payload);
     if action.name == "assign" {
-        let chunks = action.args.chunks(2);
-        for chunk in chunks {
-            if chunk.len() == 2
-                && let Some(key_str) = chunk[0].as_str()
-                && let Some(obj) = context.as_object_mut()
-            {
-                obj.insert(key_str.to_string(), chunk[1].clone());
+        if let Some(ops) = assign_ops(action) {
+            apply_assign_ops(ops, event_payload, context);
+        } else {
+            let chunks = action.args.chunks(2);
+            for chunk in chunks {
+                if chunk.len() == 2
+                    && let Some(key_str) = chunk[0].as_str()
+                    && let Some(obj) = context.as_object_mut()
+                {
+                    obj.insert(key_str.to_string(), chunk[1].clone());
+                }
             }
         }
+    }
+}
+
+fn assign_ops(action: &Action) -> Option<&Vec<serde_json::Value>> {
+    let first = action.args.first()?;
+    match first.get(ASSIGN_OPS_KEY) {
+        Some(serde_json::Value::Array(ops)) => Some(ops),
+        _ => None,
+    }
+}
+
+fn apply_assign_ops(
+    ops: &[serde_json::Value],
+    event_payload: &serde_json::Value,
+    context: &mut serde_json::Value,
+) {
+    for op in ops {
+        let Some(field) = op.get("field").and_then(|f| f.as_str()) else {
+            continue;
+        };
+        match op.get("op").and_then(|o| o.as_str()) {
+            Some("set") => {
+                if let Some(from) = op.get("from").and_then(|f| f.as_str()) {
+                    let Some((root, path)) = from.split_once('.') else {
+                        continue;
+                    };
+                    let source = match root {
+                        "event" => Some(event_payload),
+                        "context" => Some(&*context),
+                        _ => None,
+                    };
+                    let Some(source) = source else {
+                        continue;
+                    };
+                    match resolve_json_path(source, path) {
+                        Some(value) => deep_set(context, field, value.clone()),
+                        None => {
+                            if let Some(default) = op.get("default") {
+                                deep_set(context, field, default.clone());
+                            }
+                        }
+                    }
+                } else if let Some(value) = op.get("value") {
+                    deep_set(context, field, value.clone());
+                }
+            }
+            Some("add") | Some("sub") => {
+                let Some(delta) = op.get("value").and_then(|v| v.as_f64()) else {
+                    continue;
+                };
+                let current = resolve_json_path(context, field).and_then(|v| v.as_f64());
+                let Some(base) = current.or_else(|| op.get("default").and_then(|d| d.as_f64()))
+                else {
+                    continue;
+                };
+                let result = if op["op"] == "add" {
+                    base + delta
+                } else {
+                    base - delta
+                };
+                deep_set(context, field, number_value(result));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn resolve_json_path<'a>(root: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+    let mut current = root;
+    for part in path.split('.') {
+        current = current.get(part)?;
+    }
+    Some(current)
+}
+
+fn deep_set(context: &mut serde_json::Value, path: &str, value: serde_json::Value) {
+    let mut parts = path.split('.');
+    let Some(first) = parts.next() else {
+        return;
+    };
+    let Some(obj) = context.as_object_mut() else {
+        return;
+    };
+    let mut obj = obj;
+    let mut key = first;
+    for part in parts {
+        let entry = obj
+            .entry(key.to_string())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        if !entry.is_object() {
+            return;
+        }
+        obj = entry.as_object_mut().expect("checked is_object");
+        key = part;
+    }
+    obj.insert(key.to_string(), value);
+}
+
+fn number_value(v: f64) -> serde_json::Value {
+    if v.fract() == 0.0 && v >= i64::MIN as f64 && v <= i64::MAX as f64 {
+        serde_json::json!(v as i64)
+    } else {
+        serde_json::json!(v)
     }
 }
 
@@ -3688,5 +3797,228 @@ mod tests {
         assert!(actions_log.contains(&"exit_loading".to_string()));
         assert!(actions_log.contains(&"on_loading_done".to_string()));
         assert!(actions_log.contains(&"enter_loaded".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod dynamic_assign_tests {
+    use super::*;
+    use crate::clock::MockClock;
+    use xstate_ir::{ContextField, ContextSchema, StateNode as IrStateNode, StateType, Transition};
+
+    fn counter_machine(args: Vec<serde_json::Value>) -> Machine {
+        Machine {
+            id: "dynamicAssign".into(),
+            initial: "idle".into(),
+            context: ContextSchema {
+                fields: vec![
+                    ContextField {
+                        name: "count".into(),
+                        type_name: "number".into(),
+                        default_value: serde_json::json!(0),
+                    },
+                    ContextField {
+                        name: "last".into(),
+                        type_name: "string".into(),
+                        default_value: serde_json::json!(""),
+                    },
+                ],
+            },
+            states: vec![IrStateNode {
+                name: "idle".into(),
+                description: None,
+                initial: None,
+                entry: vec![],
+                exit: vec![],
+                transitions: vec![Transition {
+                    event: "STEP".into(),
+                    target: None,
+                    guard: None,
+                    actions: vec![Action {
+                        name: "assign".into(),
+                        args,
+                    }],
+                    description: None,
+                    delay_ms: None,
+                    targets: vec![],
+                }],
+                children: vec![],
+                node_type: StateType::Atomic,
+                tags: vec![],
+                invoke: None,
+                on_done: vec![],
+                output: None,
+            }],
+            setup: None,
+        }
+    }
+
+    fn send_step(
+        interpreter: &Interpreter,
+        context: &mut serde_json::Value,
+        event: serde_json::Value,
+    ) {
+        let state = interpreter.initial_state();
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+        interpreter
+            .send(
+                &state,
+                &event,
+                context,
+                &guards,
+                &mut actions,
+                &MockClock::new(0),
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn dynamic_assign_add_increments_count() {
+        let interpreter = Interpreter::new(counter_machine(vec![serde_json::json!({
+            "$assign_ops": [{ "op": "add", "field": "count", "value": 1 }]
+        })]));
+        let mut context = interpreter.initial_context();
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP"}),
+        );
+        assert_eq!(context["count"], serde_json::json!(1));
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP"}),
+        );
+        assert_eq!(context["count"], serde_json::json!(2));
+    }
+
+    #[test]
+    fn dynamic_assign_set_from_event_path() {
+        let interpreter = Interpreter::new(counter_machine(vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "add", "field": "count", "value": 1 },
+                { "op": "set", "field": "last", "from": "event.value" }
+            ]
+        })]));
+        let mut context = interpreter.initial_context();
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP", "value": "a"}),
+        );
+        assert_eq!(context["count"], serde_json::json!(1));
+        assert_eq!(context["last"], serde_json::json!("a"));
+    }
+
+    #[test]
+    fn dynamic_assign_deep_field_path() {
+        let interpreter = Interpreter::new(counter_machine(vec![serde_json::json!({
+            "$assign_ops": [{ "op": "add", "field": "count.inner", "value": 2 }]
+        })]));
+        let mut context = serde_json::json!({"count": {"inner": 1}, "last": ""});
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP"}),
+        );
+        assert_eq!(context["count"]["inner"], serde_json::json!(3));
+    }
+
+    #[test]
+    fn dynamic_assign_deep_set_creates_intermediates() {
+        let interpreter = Interpreter::new(counter_machine(vec![serde_json::json!({
+            "$assign_ops": [{ "op": "set", "field": "nested.last", "value": "x" }]
+        })]));
+        let mut context = serde_json::json!({"nested": {}, "count": 0});
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP"}),
+        );
+        assert_eq!(context["nested"]["last"], serde_json::json!("x"));
+    }
+
+    #[test]
+    fn dynamic_assign_missing_event_path_is_noop() {
+        let interpreter = Interpreter::new(counter_machine(vec![serde_json::json!({
+            "$assign_ops": [{ "op": "set", "field": "last", "from": "event.nope.deep" }]
+        })]));
+        let mut context = interpreter.initial_context();
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP"}),
+        );
+        assert_eq!(context["last"], serde_json::json!(""));
+    }
+
+    #[test]
+    fn dynamic_assign_missing_path_uses_default() {
+        let interpreter = Interpreter::new(counter_machine(vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "set", "field": "last", "from": "event.nope", "default": "fallback" }
+            ]
+        })]));
+        let mut context = interpreter.initial_context();
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP"}),
+        );
+        assert_eq!(context["last"], serde_json::json!("fallback"));
+    }
+
+    #[test]
+    fn dynamic_assign_sub_decrements() {
+        let interpreter = Interpreter::new(counter_machine(vec![serde_json::json!({
+            "$assign_ops": [{ "op": "sub", "field": "count", "value": 3 }]
+        })]));
+        let mut context = interpreter.initial_context();
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP"}),
+        );
+        assert_eq!(context["count"], serde_json::json!(-3));
+    }
+
+    #[test]
+    fn dynamic_assign_add_on_missing_field_without_default_is_noop() {
+        let interpreter = Interpreter::new(counter_machine(vec![serde_json::json!({
+            "$assign_ops": [{ "op": "add", "field": "unknown", "value": 1 }]
+        })]));
+        let mut context = interpreter.initial_context();
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP"}),
+        );
+        assert_eq!(context, serde_json::json!({"count": 0, "last": ""}));
+    }
+
+    #[test]
+    fn static_assign_still_works_alongside_envelope() {
+        let interpreter = Interpreter::new(counter_machine(vec![
+            serde_json::json!("count"),
+            serde_json::json!(42),
+        ]));
+        let mut context = interpreter.initial_context();
+
+        send_step(
+            &interpreter,
+            &mut context,
+            serde_json::json!({"type": "STEP"}),
+        );
+        assert_eq!(context["count"], serde_json::json!(42));
     }
 }

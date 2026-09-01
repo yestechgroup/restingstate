@@ -1,3 +1,4 @@
+mod assign;
 pub mod error;
 pub mod parser;
 

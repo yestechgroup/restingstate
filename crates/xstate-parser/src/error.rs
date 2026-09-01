@@ -13,4 +13,7 @@ pub enum ParseError {
 
     #[error("Unsupported XState feature: {0}")]
     UnsupportedFeature(String),
+
+    #[error("Unsupported assign expression: {0}")]
+    UnsupportedAssign(String),
 }
