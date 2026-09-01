@@ -111,3 +111,146 @@ jobs:
           echo "Extracted vectors: $PASS passed, $FAIL failed, $CRASH crashed"
           [ "$FAIL" -eq 0 ] && [ "$CRASH" -eq 0 ]
 
+  # Runs the 13 wasm-bindgen tests (wasm-build above only *builds* the wasm crates).
+  # The wasm-bindgen-cli version MUST exactly match the wasm-bindgen crate in
+  # Cargo.lock (0.2.127; wasm-bindgen-test 0.3.77 is its 0.3.x pair) or the test
+  # runner aborts with a version-mismatch error. Derived via:
+  #   grep -A1 'name = "wasm-bindgen"' Cargo.lock
+  # Node provides the JS runtime the wasm-bindgen-test-runner drives.
+  wasm-tests:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # jetli/wasm-bindgen-action downloads the prebuilt cli (seconds) instead of
+      # `cargo install wasm-bindgen-cli` (minutes); both land wasm-bindgen and
+      # wasm-bindgen-test-runner on PATH.
+      - name: Install wasm-bindgen-cli 0.2.127 (matching Cargo.lock)
+        uses: jetli/wasm-bindgen-action@v0.2.0
+        with:
+          version: '0.2.127'
+
+      - name: Run wasm-bindgen tests
+        run: CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test -p xstate-wasm --target wasm32-unknown-unknown
+
+  # MSRV floor check. workspace.package rust-version = "1.97" (rust-toolchain.toml
+  # pins 1.97.1 for everyone else). Setting the `toolchain` input makes
+  # setup-rust-toolchain ignore the toolchain file, and its default
+  # `override: true` runs `rustup override set 1.97`, which wins over the file for
+  # every cargo call in this job — so the floor (latest 1.97.x) is what actually runs.
+  # `rustflags: ""` clears the action's default RUSTFLAGS=-D warnings: this is a
+  # plain compile check, warnings are the stable-toolchain job's business.
+  msrv:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: "1.97"
+          rustflags: ""
+
+      - name: cargo check on MSRV (1.97)
+        run: cargo check --workspace
+
+  # Public-API semver guard. Compares HEAD against the latest `v*` tag reachable
+  # from it. BEFORE the first v* tag exists this job is green by design: the
+  # lookup step emits an empty tag, the check step is skipped via `if:`, and a
+  # ::notice explains the skip. Post-tag, a semver violation fails the job.
+  # fetch-depth: 0 is required so tags are available for `git describe`.
+  # NOTE: the action lives in the `-action` repo (README-recommended);
+  # obi1kenobi/cargo-semver-checks has no v2 ref / root action.yml anymore.
+  semver-checks:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Find latest v* tag as baseline
+        id: baseline
+        run: |
+          # Nearest v* ancestor tag; empty string when none exists (pre-first-tag).
+          tag="$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || true)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: cargo-semver-checks against latest v* tag
+        if: steps.baseline.outputs.tag != ''
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          package: xstate-ir,xstate-core,xstate-parser,xstate-backend-native,xstate-actor,xstate-codegen,xstate-macro
+          baseline-rev: ${{ steps.baseline.outputs.tag }}
+          # Rust was already set up above from rust-toolchain.toml; don't re-install stable.
+          rust-toolchain: manual
+
+      - name: Skip (no v* tag yet)
+        if: steps.baseline.outputs.tag == ''
+        run: echo "::notice::No 'v*' tag reachable from HEAD yet — cargo-semver-checks skipped until the first tag is pushed."
+
+  # Docs build with broken intra-doc links denied. RUSTDOCFLAGS (not the cargo
+  # invocation) is how rustdoc gets `-D warnings`: `cargo doc` has no flag for it.
+  docs:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build docs with warnings denied
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps --all-features
+
+  # Publish dry-runs so metadata rot fails CI instead of release day.
+  # KNOWN LIMITATION: `cargo publish --dry-run` re-resolves the crate's deps
+  # against crates.io, so any crate depending on a workspace sibling that isn't
+  # published yet fails with "no matching package named `xstate-*` found"
+  # (chicken-and-egg: nothing is on crates.io before the first release). Those
+  # failures are tolerated; ANY OTHER failure (missing description, license,
+  # bad metadata, real build error) still fails the job via the triage below.
+  # xstate-ir has no workspace deps, so its dry-run is expected to truly pass.
+  publish-dry-run:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Dry-run publish each publishable crate
+        # pipefail so the `if` sees cargo's exit status, not tee's.
+        shell: bash
+        run: |
+          set -u -o pipefail
+          rc=0
+          for crate in xstate-ir xstate-core xstate-parser xstate-backend-native xstate-actor xstate-codegen xstate-macro; do
+            echo "::group::cargo publish --dry-run -p $crate"
+            log="$(mktemp)"
+            if cargo publish --dry-run --allow-dirty -p "$crate" 2>&1 | tee "$log"; then
+              echo "$crate: dry-run OK"
+            elif grep -q 'no matching package named .xstate-' "$log"; then
+              echo "$crate: tolerated — workspace dep not on crates.io yet (known chicken-and-egg)"
+            else
+              echo "::error::$crate: real publish failure (not the known missing-workspace-dep error)"
+              sed -n '1,80p' "$log"
+              rc=1
+            fi
+            rm -f "$log"
+            echo "::endgroup::"
+          done
+          exit "$rc"
+
