@@ -10,6 +10,7 @@ members = [
     "crates/xstate-napi",
     "crates/xstate-wasm",
     "crates/xstate-actor",
+    "crates/xstate-backend-native",
     "tests/compatibility/rust-runner",
     "examples/rust-token-bucket",
     "examples/rust-dynamic",

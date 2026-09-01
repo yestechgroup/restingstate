@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod actor_logic;
+pub mod backend;
 pub mod clock;
 pub mod guards;
 pub mod interpreter;
@@ -11,7 +12,11 @@ pub use actions::{ActionImpl, ActionRegistry};
 pub use actor_logic::{
     ActorLogic, ActorOutput, CallbackLogic, MachineLogic, PromiseLogic, ReducerLogic, Sender,
 };
-pub use clock::{Clock, InstantClock, MockClock};
+#[cfg(not(target_arch = "wasm32"))]
+pub use clock::InstantClock;
+#[cfg(target_arch = "wasm32")]
+pub use clock::WasmClock;
+pub use clock::{Clock, MockClock};
 pub use guards::{GuardImpl, GuardRegistry};
 pub use interpreter::Interpreter;
 pub use machine::{Actions, Guards, Machine};

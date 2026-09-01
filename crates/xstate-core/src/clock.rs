@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 pub trait Clock: Send + Sync {
     fn now_ms(&self) -> u64;
 }
@@ -30,26 +28,54 @@ impl Clock for MockClock {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct InstantClock {
-    start: Instant,
+    start: std::time::Instant,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl InstantClock {
     pub fn new() -> Self {
         InstantClock {
-            start: Instant::now(),
+            start: std::time::Instant::now(),
         }
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Default for InstantClock {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Clock for InstantClock {
     fn now_ms(&self) -> u64 {
         self.start.elapsed().as_millis() as u64
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub struct WasmClock;
+
+#[cfg(target_arch = "wasm32")]
+impl WasmClock {
+    pub fn new() -> Self {
+        WasmClock
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Default for WasmClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Clock for WasmClock {
+    fn now_ms(&self) -> u64 {
+        js_sys::Date::now() as u64
     }
 }

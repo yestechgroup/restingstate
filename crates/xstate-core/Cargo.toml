@@ -5,11 +5,18 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = ["async"]
+async = ["dep:tokio"]
+
 [dependencies]
 xstate-ir = { path = "../xstate-ir" }
 serde.workspace = true
 serde_json.workspace = true
-tokio = { version = "1", features = ["sync", "rt", "macros"] }
+tokio = { version = "1", features = ["sync", "rt", "macros"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
 
 [dev-dependencies]
 proptest = "1"

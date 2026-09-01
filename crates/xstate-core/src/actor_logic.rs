@@ -193,10 +193,12 @@ impl CallbackLogic {
 }
 
 /// Sender for callback actors to send events back to the actor system.
+#[cfg(feature = "async")]
 pub struct Sender {
     tx: tokio::sync::mpsc::UnboundedSender<serde_json::Value>,
 }
 
+#[cfg(feature = "async")]
 impl Sender {
     pub fn new(tx: tokio::sync::mpsc::UnboundedSender<serde_json::Value>) -> Self {
         Sender { tx }
@@ -207,6 +209,20 @@ impl Sender {
     }
 }
 
+/// Sender stub for WASM/single-threaded mode (no-op).
+#[cfg(not(feature = "async"))]
+pub struct Sender;
+
+#[cfg(not(feature = "async"))]
+impl Sender {
+    pub fn new() -> Self {
+        Sender
+    }
+
+    pub fn send(&self, _event: serde_json::Value) {}
+}
+
+#[cfg(feature = "async")]
 impl ActorLogic for CallbackLogic {
     fn name(&self) -> &str {
         &self.name
@@ -223,6 +239,27 @@ impl ActorLogic for CallbackLogic {
     ) -> Vec<serde_json::Value> {
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
         let sender = Sender::new(tx);
+        (self.callback)(event, sender);
+        vec![]
+    }
+}
+
+#[cfg(not(feature = "async"))]
+impl ActorLogic for CallbackLogic {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn initial_snapshot(&self) -> serde_json::Value {
+        self.initial.clone()
+    }
+
+    fn receive(
+        &mut self,
+        event: serde_json::Value,
+        _snapshot: &mut serde_json::Value,
+    ) -> Vec<serde_json::Value> {
+        let sender = Sender::new();
         (self.callback)(event, sender);
         vec![]
     }

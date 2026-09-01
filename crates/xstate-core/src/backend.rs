@@ -1,47 +1,42 @@
 use crate::actor_logic::ActorLogic;
+use serde::{Deserialize, Serialize};
 
-/// Status of an actor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+/// Status of an actor instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ActorStatus {
-    /// Actor is running and accepting events.
     Running,
-    /// Actor has reached a final state and stopped.
-    Done,
-    /// Actor was stopped externally.
     Stopped,
-    /// Actor encountered an error.
     Error,
 }
 
-/// Backend-agnostic actor handle trait.
+/// Handle to a spawned actor — allows sending events and querying state.
 pub trait ActorHandle: Send + Sync {
     /// Send an event to this actor.
     fn send(&self, event: serde_json::Value);
-    /// Request the actor to stop.
+    /// Stop this actor.
     fn stop(&self);
-    /// Get the current snapshot as JSON: `{ value, context }`.
+    /// Get the actor's current snapshot.
     fn snapshot(&self) -> serde_json::Value;
     /// Get the actor's current status.
     fn status(&self) -> ActorStatus;
 }
 
-/// Backend-agnostic actor system trait.
+/// Backend actor system — manages actor lifecycle.
 pub trait ActorSystem: Send + Sync {
-    /// The handle type returned by `spawn`.
     type Handle: ActorHandle;
 
-    /// Spawn a new actor with the given logic and ID.
+    /// Spawn a new actor with the given logic.
     fn spawn(&self, id: &str, logic: Box<dyn ActorLogic>) -> Self::Handle;
-    /// Send an event to a named actor.
+    /// Send an event to an actor by id.
     fn send_to(&self, id: &str, event: serde_json::Value);
-    /// Stop a named actor.
+    /// Stop an actor by id.
     fn stop(&self, id: &str);
-    /// Get a snapshot of a named actor's current state.
+    /// Get the snapshot of an actor by id.
     fn snapshot(&self, id: &str) -> Option<serde_json::Value>;
-    /// Get an actor's status.
+    /// Get the status of an actor by id.
     fn status(&self, id: &str) -> Option<ActorStatus>;
-    /// Number of registered actors.
+    /// Number of actors in the system.
     fn len(&self) -> usize;
-    /// Whether the registry is empty.
+    /// Whether the system has no actors.
     fn is_empty(&self) -> bool;
 }

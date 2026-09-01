@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-xstate-core = { path = "../xstate-core" }
+xstate-core = { path = "../xstate-core", features = ["async"] }
 xstate-ir = { path = "../xstate-ir" }
 tokio = { version = "1", features = ["sync", "rt", "macros", "time"] }
 serde_json.workspace = true

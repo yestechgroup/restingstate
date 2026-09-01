@@ -1,20 +1,13 @@
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 use xstate_core::Interpreter;
-use xstate_core::clock::Clock;
+#[cfg(target_arch = "wasm32")]
+use xstate_core::WasmClock;
 use xstate_ir::Machine;
 
 #[wasm_bindgen(start)]
 pub fn init() {
     console_error_panic_hook::set_once();
-}
-
-struct WasmClock;
-
-impl Clock for WasmClock {
-    fn now_ms(&self) -> u64 {
-        0
-    }
 }
 
 #[wasm_bindgen]
@@ -71,7 +64,10 @@ impl JsMachine {
         let mut actions =
             |_name: &str, _args: &[serde_json::Value], _event_payload: &serde_json::Value| {};
 
+        #[cfg(target_arch = "wasm32")]
         let clock = WasmClock;
+        #[cfg(not(target_arch = "wasm32"))]
+        let clock = xstate_core::clock::MockClock::default();
 
         match self.interpreter.send(
             &current_state,
