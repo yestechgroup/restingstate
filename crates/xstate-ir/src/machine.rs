@@ -4,6 +4,7 @@ use crate::actors::SetupConfig;
 use crate::state::StateNode;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Machine {
     pub id: String,
     pub initial: String,
@@ -14,11 +15,13 @@ pub struct Machine {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ContextSchema {
     pub fields: Vec<ContextField>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ContextField {
     pub name: String,
     pub type_name: String,

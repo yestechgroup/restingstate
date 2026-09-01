@@ -6,6 +6,8 @@ use crate::actions::ActionRegistry;
 use crate::clock::Clock;
 use crate::guards::GuardRegistry;
 use crate::state_value::StateValue;
+pub use crate::validation::MachineValidationError;
+use crate::validation::validate_machine_structure;
 
 const ASSIGN_OPS_KEY: &str = "$assign_ops";
 
@@ -145,22 +147,6 @@ fn run_action_by_name(
     actions(action_name, &[], event_payload);
 }
 
-fn validate_state_node(node: &StateNode) -> Result<(), MachineValidationError> {
-    if node.node_type == StateType::Compound
-        && let Some(initial) = &node.initial
-        && !node.children.iter().any(|c| &c.name == initial)
-    {
-        return Err(MachineValidationError::UnknownInitialChild {
-            state: node.name.clone(),
-            child: initial.clone(),
-        });
-    }
-    for child in &node.children {
-        validate_state_node(child)?;
-    }
-    Ok(())
-}
-
 pub struct Interpreter {
     machine: Machine,
     history: RefCell<HashMap<String, StateValue>>,
@@ -185,27 +171,12 @@ pub enum PersistError {
     HistoryTargetInvalid(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum MachineValidationError {
-    #[error("initial state '{0}' not found in machine states")]
-    UnknownInitialState(String),
-    #[error("compound state '{state}' declares unknown initial child '{child}'")]
-    UnknownInitialChild { state: String, child: String },
-}
-
 impl Interpreter {
-    /// Reject machines whose `initial` pointers reference unknown states so
-    /// boundaries can return typed errors instead of panicking later (#29).
+    /// Reject machines whose `initial` pointers or transition targets reference
+    /// unknown states so boundaries can return typed errors instead of
+    /// panicking later (#29, target checks added in #30).
     pub fn validate_machine(machine: &Machine) -> Result<(), MachineValidationError> {
-        if !machine.states.iter().any(|s| s.name == machine.initial) {
-            return Err(MachineValidationError::UnknownInitialState(
-                machine.initial.clone(),
-            ));
-        }
-        for state in &machine.states {
-            validate_state_node(state)?;
-        }
-        Ok(())
+        validate_machine_structure(machine)
     }
 
     pub fn new(machine: Machine) -> Self {

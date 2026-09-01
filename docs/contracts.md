@@ -346,6 +346,30 @@ transition (`lib.rs:56`); an **action that throws is logged and skipped** (`lib.
 returning a non-boolean is treated as `true`. Status strings are pinned by
 `crates/xstate-wasm/tests/actors.rs` (including `"done"`); the wasm tests run in CI (epic #31).
 
+## Machine-IR schema & validation
+
+The machine-IR contract artifact is the committed JSON Schema
+[`schema/machine-ir.schema.json`](../schema/machine-ir.schema.json) (draft 2020-12,
+generated with `schemars` from the `xstate-ir` types).
+
+- **Generation** is opt-in: `xstate-ir`'s `schema` feature (default OFF) derives
+  `JsonSchema` on every public IR type and exposes `machine_ir_schema()` /
+  `machine_ir_schema_json()`. A golden test regenerates the file and fails on drift —
+  regenerate with `XSTATE_REGEN_SCHEMA=1 cargo test -p xstate-ir --features schema`
+  and commit the result together with the IR change.
+- **Rust validation:** `xstate_core::validate_machine_json(&str) -> Result<(), ValidateError>`
+  (`crates/xstate-core/src/validation.rs`) parses the JSON into `xstate_ir::Machine`
+  (`ValidateError::Parse`) and runs the structural checks shared with
+  `Interpreter::validate_machine` (`ValidateError::Invalid`): initial resolvability,
+  compound initial children, and transition-target existence (dotted targets are
+  root-anchored, bare names resolve anywhere in the tree — mirroring `build_target`).
+- **WASM validation:** `validateMachine(machineIrJson)` from `@restingstate/wasm`
+  (`crates/xstate-wasm/src/lib.rs`) returns `"ok"` or a rejecting error message using
+  the same checks.
+- **Sweep:** every hand-crafted compatibility vector's `machine_ir` is asserted to
+  parse and validate (`crates/xstate-core/tests/compat_machine_validation.rs`);
+  schema drift is caught by the golden test above.
+
 ## Where the pins live
 
 | Contract | Test |
@@ -356,6 +380,7 @@ returning a non-boolean is treated as `true`. Status strings are pinned by
 | `$assign_ops` envelope + op vocabulary; pairwise fallback | `crates/xstate-core/tests/contracts.rs`, `crates/xstate-parser/tests/parser_tests.rs` |
 | Persisted snapshot key set, `version: 1`, legacy restore, rejection rules | `crates/xstate-core/tests/contracts.rs`, `crates/xstate-core/tests/persistence_tests.rs` |
 | Guard/action closure shapes; missing-guard→allow / missing-action→noop | `crates/xstate-core/tests/contracts.rs` |
+| Machine-IR JSON Schema golden; validate_machine / wasm `validateMachine` | `crates/xstate-ir/tests/schema_golden.rs`, `crates/xstate-core/tests/validation_tests.rs`, `crates/xstate-wasm/tests/validate.rs` |
 | wasm status strings / JS API | `crates/xstate-wasm/tests/` |
 
 A change to any pinned string, payload key, or snapshot key set must fail these tests before it
