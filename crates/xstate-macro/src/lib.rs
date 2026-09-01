@@ -2,6 +2,13 @@ use proc_macro::TokenStream;
 use proc_macro_error2::{abort, proc_macro_error};
 use std::path::PathBuf;
 
+/// Generates a Rust state machine from an XState TypeScript file.
+///
+/// The generated machine is a **flat FSM**: a `(State, Event) -> State` match with
+/// typed enums and a context struct. Guards, actions, `after` delays, history,
+/// compound/parallel states, and invoke are parsed but **not enforced at runtime**.
+/// For full XState semantics, run the machine IR through the `Interpreter`
+/// (`xstate-core`) instead — see `docs/runtime-paths.md`.
 #[proc_macro]
 #[proc_macro_error]
 pub fn xstate(input: TokenStream) -> TokenStream {

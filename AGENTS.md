@@ -55,6 +55,10 @@ xstate-core            — Pure Rust runtime (no TS/JS dependency)
     └── NAPI-RS (xstate-napi)
 ```
 
+**Two runtime paths:** the Interpreter (`xstate-core`) is the supported runtime for advanced
+semantics and plugin work; codegen / `xstate!` targets simple flat FSMs only — see
+[docs/runtime-paths.md](docs/runtime-paths.md).
+
 ---
 
 ## Code Conventions
@@ -245,28 +249,31 @@ node run-benchmarks.mjs workloads/toggle.json      # Single workload
 
 ## Conformance Profile
 
-| XState Feature | Status | Target |
-|---------------|--------|--------|
-| Atomic states | ✓ | 0.1 |
-| Compound (nested) states | ✓ | 0.1 |
-| Parallel states | ✓ | 0.1 |
-| Final states | ✓ | 0.1 |
-| Transitions (event → target) | ✓ | 0.1 |
-| Event payload | ✓ | 0.1 |
-| Guards (cond) | ✓ | 0.1 |
-| Context | ✓ | 0.1 |
-| Actions (entry/exit/transition) | ✓ | 0.1 |
-| assign built-in | ✓ | 0.1 |
-| Always transitions | ✓ | 0.2 |
-| History states | ✓ | 0.2 |
-| Delayed transitions (after) | ✓ | 0.2 |
-| Invoked actors | ✓ | 0.2 |
-| Spawned actors | ✓ | 0.3 |
-| Actor systems | ✓ | 0.3 |
-| Persistence (serialize/restore) | ✓ | 0.2 |
-| setup({ actors, guards, actions }) | ✓ | 0.3 |
-| **TOTAL (0.1 targets)** | **10/10** | **0.1** |
-| **TOTAL (0.2 targets)** | **5/5** | **0.2** |
+Path legend: **I** = Interpreter path, **C** = codegen / `#[xstate]` path, **B** = both.
+See [docs/runtime-paths.md](docs/runtime-paths.md) for the full runtime-path decision.
+
+| XState Feature | Status | Target | Path |
+|---------------|--------|--------|------|
+| Atomic states | ✓ | 0.1 | B |
+| Compound (nested) states | ✓ | 0.1 | I |
+| Parallel states | ✓ | 0.1 | I |
+| Final states | ✓ | 0.1 | I |
+| Transitions (event → target) | ✓ | 0.1 | B |
+| Event payload | ✓ | 0.1 | I |
+| Guards (cond) | ✓ | 0.1 | I |
+| Context | ✓ | 0.1 | B |
+| Actions (entry/exit/transition) | ✓ | 0.1 | I |
+| assign built-in | ✓ | 0.1 | I |
+| Always transitions | ✓ | 0.2 | I |
+| History states | ✓ | 0.2 | I |
+| Delayed transitions (after) | ✓ | 0.2 | I |
+| Invoked actors | ✓ | 0.2 | I |
+| Spawned actors | ✓ | 0.3 | I |
+| Actor systems | ✓ | 0.3 | I |
+| Persistence (serialize/restore) | ✓ | 0.2 | I |
+| setup({ actors, guards, actions }) | ✓ | 0.3 | I |
+| **TOTAL (0.1 targets)** | **10/10** | **0.1** | |
+| **TOTAL (0.2 targets)** | **5/5** | **0.2** | |
 | **TOTAL (0.3 targets)** | **3/3** | **0.3** |
 
 ---
