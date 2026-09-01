@@ -4,13 +4,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Pure Rust runtime for XState statechart machines: interpreter, snapshots, and backend traits."
+readme = "README.md"
+keywords = ["xstate", "statechart", "state-machine", "interpreter", "snapshot"]
+categories = ["rust-patterns", "concurrency"]
 
 [features]
 default = ["async"]
 async = ["dep:tokio"]
 
 [dependencies]
-xstate-ir = { path = "../xstate-ir" }
+xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

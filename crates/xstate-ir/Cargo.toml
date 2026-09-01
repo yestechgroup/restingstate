@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Language-neutral intermediate representation for XState statechart machines."
+readme = "README.md"
+keywords = ["xstate", "statechart", "state-machine", "ir"]
+categories = ["data-structures", "rust-patterns"]
 
 [dependencies]
 serde.workspace = true

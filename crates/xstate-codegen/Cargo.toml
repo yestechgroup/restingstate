@@ -4,9 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Rust code generator that renders xstate-ir machines into typed enums and transition functions."
+readme = "README.md"
+keywords = ["xstate", "statechart", "codegen", "state-machine"]
+categories = ["development-tools", "rust-patterns"]
 
 [dependencies]
-xstate-ir = { path = "../xstate-ir" }
+xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
 quote.workspace = true
 syn.workspace = true
 proc-macro2.workspace = true
