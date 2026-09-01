@@ -91,6 +91,31 @@ impl JsMachine {
         serde_json::to_string(&snap).unwrap_or_default()
     }
 
+    #[wasm_bindgen(js_name = persistedSnapshot)]
+    pub fn persisted_snapshot(&self) -> String {
+        let state = self.state.borrow();
+        let context = self.context.borrow();
+        let snap = self.interpreter.persisted_snapshot(&state, &context);
+        serde_json::to_string(&snap).unwrap_or_default()
+    }
+
+    #[wasm_bindgen(js_name = restore)]
+    pub fn restore(machine_json: &str, snapshot_json: &str) -> Result<JsMachine, JsValue> {
+        let machine: Machine = serde_json::from_str(machine_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
+        let snapshot: serde_json::Value = serde_json::from_str(snapshot_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid snapshot JSON: {}", e)))?;
+        let interpreter = Interpreter::new(machine);
+        let (state, context) = interpreter
+            .restore_persisted(&snapshot)
+            .map_err(|e| JsValue::from_str(&format!("Restore failed: {}", e)))?;
+        Ok(JsMachine {
+            interpreter,
+            state: RefCell::new(state),
+            context: RefCell::new(context),
+        })
+    }
+
     #[wasm_bindgen(js_name = send)]
     pub fn send(&self, event_json: &str) -> Option<String> {
         let event: serde_json::Value = serde_json::from_str(event_json).ok()?;
@@ -207,6 +232,31 @@ impl JsActorSystem {
         let initial: serde_json::Value = serde_json::from_str(initial_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid initial state JSON: {}", e)))?;
         let logic = ReducerLogic::new(id, initial, |state, _event| (state.clone(), vec![]));
+        self.system.spawn(id, Box::new(logic));
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = spawnFromState)]
+    pub fn spawn_from_state(
+        &self,
+        id: &str,
+        machine_json: &str,
+        snapshot_json: &str,
+    ) -> Result<(), JsValue> {
+        let machine: Machine = serde_json::from_str(machine_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
+        let snapshot: serde_json::Value = serde_json::from_str(snapshot_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid snapshot JSON: {}", e)))?;
+        let interpreter = Interpreter::new(machine);
+        let (state, context) = interpreter
+            .restore_persisted(&snapshot)
+            .map_err(|e| JsValue::from_str(&format!("Restore failed: {}", e)))?;
+        let initial = serde_json::json!({
+            "value": serde_json::to_value(&state).unwrap_or_default(),
+            "context": context,
+        });
+        let logic =
+            MachineLogic::new(interpreter, MockClock::new(0)).with_initial_snapshot(initial);
         self.system.spawn(id, Box::new(logic));
         Ok(())
     }

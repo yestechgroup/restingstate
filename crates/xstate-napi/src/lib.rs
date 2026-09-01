@@ -42,6 +42,32 @@ impl JsMachine {
         })
     }
 
+    #[napi(factory)]
+    pub fn from_persisted(machine_json: String, snapshot_json: String) -> napi::Result<Self> {
+        let machine: Machine = serde_json::from_str(&machine_json)
+            .map_err(|e| napi::Error::from_reason(format!("Invalid machine JSON: {}", e)))?;
+        let snapshot: serde_json::Value = serde_json::from_str(&snapshot_json)
+            .map_err(|e| napi::Error::from_reason(format!("Invalid snapshot JSON: {}", e)))?;
+        let interpreter = Interpreter::new(machine);
+        let (state, context) = interpreter
+            .restore_persisted(&snapshot)
+            .map_err(|e| napi::Error::from_reason(format!("Restore failed: {}", e)))?;
+        Ok(JsMachine {
+            interpreter,
+            state: RefCell::new(state),
+            context: RefCell::new(context),
+        })
+    }
+
+    #[napi]
+    pub fn persisted_snapshot(&self) -> napi::Result<String> {
+        let state = self.state.borrow();
+        let context = self.context.borrow();
+        let snap = self.interpreter.persisted_snapshot(&state, &context);
+        serde_json::to_string(&snap)
+            .map_err(|e| napi::Error::from_reason(format!("Serialize error: {}", e)))
+    }
+
     #[napi]
     pub fn snapshot(&self) -> napi::Result<String> {
         let state_value = serde_json::to_value(&*self.state.borrow())
@@ -198,5 +224,37 @@ mod tests {
         let event = serde_json::json!({"type": "UNKNOWN"}).to_string();
         let result = machine.send(event).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_persisted_round_trip() {
+        let json = toggle_machine_json();
+        let machine = JsMachine::new(json.clone()).unwrap();
+        machine
+            .send(serde_json::json!({"type": "TOGGLE"}).to_string())
+            .unwrap()
+            .unwrap();
+
+        let persisted = machine.persisted_snapshot().unwrap();
+        let snap: serde_json::Value = serde_json::from_str(&persisted).unwrap();
+        assert_eq!(snap["value"], serde_json::json!("active"));
+        assert_eq!(snap["version"], 1);
+        assert!(snap["history"].is_object());
+        assert!(snap["entry_times"].is_object());
+
+        let restored = JsMachine::from_persisted(json, persisted).unwrap();
+        let snapshot = restored.snapshot().unwrap();
+        let snap: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+        assert_eq!(snap["value"], serde_json::json!("active"));
+    }
+
+    #[test]
+    fn test_from_persisted_accepts_old_format() {
+        let json = toggle_machine_json();
+        let machine =
+            JsMachine::from_persisted(json, r#"{"value":"active","context":{}}"#.into()).unwrap();
+        let snapshot = machine.snapshot().unwrap();
+        let snap: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+        assert_eq!(snap["value"], serde_json::json!("active"));
     }
 }

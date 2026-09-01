@@ -303,6 +303,35 @@ impl ActorSystem {
         id
     }
 
+    /// Spawn an actor from a versioned persisted snapshot (`persisted_snapshot`
+    /// format). Restores the state, context, history map and `after` entry
+    /// times into the actor's interpreter, so history targets and preserved
+    /// deadlines keep working. Returns the actor's ID.
+    pub fn spawn_with_persisted(
+        &self,
+        interpreter: Interpreter,
+        clock: impl Clock + 'static,
+        id: String,
+        persisted: &serde_json::Value,
+    ) -> Result<String, xstate_core::interpreter::PersistError> {
+        let (state, context) = interpreter.restore_persisted(persisted)?;
+        let handle = spawn_actor(
+            interpreter,
+            clock,
+            String::new(),
+            id.clone(),
+            Some(state),
+            Some(context),
+            || {},
+            self.outgoing_tx.clone(),
+            self.spawn_tx.clone(),
+            GuardRegistry::default(),
+            ActionRegistry::default(),
+        );
+        self.actors.lock().unwrap().insert(id.clone(), handle);
+        Ok(id)
+    }
+
     /// Send an event to a named actor.
     pub fn send_to(&self, id: &str, event: serde_json::Value) {
         if let Some(actor) = self.actors.lock().unwrap().get(id) {
@@ -1320,5 +1349,177 @@ mod tests {
 
         let child_snap = system.snapshot(&child_id).unwrap();
         assert_eq!(child_snap["value"], serde_json::json!("poked"));
+    }
+
+    fn persisted_history_machine() -> Machine {
+        Machine {
+            id: "history".into(),
+            initial: "main".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                StateNode {
+                    name: "main".into(),
+                    description: None,
+                    initial: Some("b1".into()),
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "SWITCH".into(),
+                        target: Some("other".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                        targets: vec![],
+                    }],
+                    children: vec![
+                        StateNode {
+                            name: "b1".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![Transition {
+                                event: "NEXT".into(),
+                                target: Some("b2".into()),
+                                guard: None,
+                                actions: vec![],
+                                description: None,
+                                delay_ms: None,
+                                targets: vec![],
+                            }],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                            on_done: vec![],
+                            output: None,
+                        },
+                        StateNode {
+                            name: "b2".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                            on_done: vec![],
+                            output: None,
+                        },
+                        StateNode {
+                            name: "hist".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::History,
+                            tags: vec![],
+                            invoke: None,
+                            on_done: vec![],
+                            output: None,
+                        },
+                    ],
+                    node_type: StateType::Compound,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+                StateNode {
+                    name: "other".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "BACK".into(),
+                        target: Some("hist".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                        targets: vec![],
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+            ],
+            setup: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn spawn_with_persisted_restores_history() {
+        let machine = persisted_history_machine();
+        let source = Interpreter::new(machine.clone());
+        let mut state = source.initial_state();
+        let mut ctx = source.initial_context();
+        state = source
+            .send(
+                &state,
+                &serde_json::json!({"type": "NEXT"}),
+                &mut ctx,
+                &|_, _, _| true,
+                &mut |_, _, _| {},
+                &MockClock::new(0),
+            )
+            .unwrap();
+        state = source
+            .send(
+                &state,
+                &serde_json::json!({"type": "SWITCH"}),
+                &mut ctx,
+                &|_, _, _| true,
+                &mut |_, _, _| {},
+                &MockClock::new(0),
+            )
+            .unwrap();
+        let persisted = source.persisted_snapshot(&state, &ctx);
+        assert_eq!(persisted["history"]["main"], serde_json::json!("b2"));
+
+        let system = ActorSystem::new();
+        let id = system
+            .spawn_with_persisted(
+                Interpreter::new(machine),
+                MockClock::new(0),
+                "restored".into(),
+                &persisted,
+            )
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let snap = system.snapshot(&id).unwrap();
+        assert_eq!(snap["value"], serde_json::json!("other"));
+
+        system.send_to(&id, serde_json::json!({"type": "BACK"}));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let snap = system.snapshot(&id).unwrap();
+        assert_eq!(
+            snap["value"],
+            serde_json::json!({"main": "b2"}),
+            "restored actor must return to the recorded history child b2, not initial b1"
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_with_persisted_rejects_invalid_json() {
+        let system = ActorSystem::new();
+        let result = system.spawn_with_persisted(
+            Interpreter::new(persisted_history_machine()),
+            MockClock::new(0),
+            "bad".into(),
+            &serde_json::json!({"version": 99, "value": "main", "context": {}}),
+        );
+        assert!(result.is_err());
     }
 }
