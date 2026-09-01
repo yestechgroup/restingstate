@@ -349,3 +349,433 @@ fn parse_setup_full() {
     let timeout = setup.delays.get("timeout").unwrap();
     assert_eq!(*timeout, 2000);
 }
+
+fn transition_actions<'a>(machine: &'a xstate_ir::Machine, event: &str) -> &'a [xstate_ir::Action] {
+    &machine.states[0]
+        .transitions
+        .iter()
+        .find(|t| t.event == event)
+        .unwrap()
+        .actions
+}
+
+#[test]
+fn parse_dynamic_assign_context_arithmetic() {
+    let source = r#"
+        const m = createMachine({
+          id: 'counter',
+          initial: 'idle',
+          context: { steps: 0 },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ steps: ({ context }) => context.steps + 1 }) },
+              },
+            },
+          },
+        });
+    "#;
+    let machine = parse(source).unwrap();
+    let actions = transition_actions(&machine, "STEP");
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].name, "assign");
+    assert_eq!(
+        actions[0].args,
+        vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "add", "field": "steps", "value": 1 }
+            ]
+        })]
+    );
+}
+
+#[test]
+fn parse_dynamic_assign_subtraction() {
+    let source = r#"
+        const m = createMachine({
+          id: 'counter',
+          initial: 'idle',
+          context: { budget: 10 },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ budget: ({ context }) => context.budget - 1 }) },
+              },
+            },
+          },
+        });
+    "#;
+    let machine = parse(source).unwrap();
+    let actions = transition_actions(&machine, "STEP");
+    assert_eq!(
+        actions[0].args,
+        vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "sub", "field": "budget", "value": 1 }
+            ]
+        })]
+    );
+}
+
+#[test]
+fn parse_dynamic_assign_from_event() {
+    let source = r#"
+        const m = createMachine({
+          id: 'assignEvent',
+          initial: 'idle',
+          context: { last: '' },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ last: ({ event }) => event.value }) },
+              },
+            },
+          },
+        });
+    "#;
+    let machine = parse(source).unwrap();
+    let actions = transition_actions(&machine, "STEP");
+    assert_eq!(
+        actions[0].args,
+        vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "set", "field": "last", "from": "event.value" }
+            ]
+        })]
+    );
+}
+
+#[test]
+fn parse_dynamic_assign_nested_event_path() {
+    let source = r#"
+        const m = createMachine({
+          id: 'assignNested',
+          initial: 'idle',
+          context: { name: '' },
+          states: {
+            idle: {
+              on: {
+                STEP: {
+                  actions: assign({
+                    name: ({ context, event }) => event.user.name,
+                  }),
+                },
+              },
+            },
+          },
+        });
+    "#;
+    let machine = parse(source).unwrap();
+    let actions = transition_actions(&machine, "STEP");
+    assert_eq!(
+        actions[0].args,
+        vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "set", "field": "name", "from": "event.user.name" }
+            ]
+        })]
+    );
+}
+
+#[test]
+fn parse_dynamic_assign_from_context_path() {
+    let source = r#"
+        const m = createMachine({
+          id: 'assignCtx',
+          initial: 'idle',
+          context: { a: 1, b: 0 },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ b: ({ context }) => context.a }) },
+              },
+            },
+          },
+        });
+    "#;
+    let machine = parse(source).unwrap();
+    let actions = transition_actions(&machine, "STEP");
+    assert_eq!(
+        actions[0].args,
+        vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "set", "field": "b", "from": "context.a" }
+            ]
+        })]
+    );
+}
+
+#[test]
+fn parse_dynamic_assign_mixed_static_and_dynamic() {
+    let source = r#"
+        const m = createMachine({
+          id: 'assignMixed',
+          initial: 'idle',
+          context: { count: 0, last: '' },
+          states: {
+            idle: {
+              on: {
+                STEP: {
+                  actions: assign({
+                    count: ({ context }) => context.count + 1,
+                    last: 'step',
+                  }),
+                },
+              },
+            },
+          },
+        });
+    "#;
+    let machine = parse(source).unwrap();
+    let actions = transition_actions(&machine, "STEP");
+    assert_eq!(
+        actions[0].args,
+        vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "add", "field": "count", "value": 1 },
+                { "op": "set", "field": "last", "value": "step" }
+            ]
+        })]
+    );
+}
+
+#[test]
+fn parse_dynamic_assign_in_actions_array() {
+    let source = r#"
+        const m = createMachine({
+          id: 'assignArray',
+          initial: 'idle',
+          context: { count: 0 },
+          states: {
+            idle: {
+              on: {
+                STEP: {
+                  actions: ['log', assign({ count: ({ context }) => context.count + 1 })],
+                },
+              },
+            },
+          },
+        });
+    "#;
+    let machine = parse(source).unwrap();
+    let actions = transition_actions(&machine, "STEP");
+    assert_eq!(actions.len(), 2);
+    assert_eq!(actions[0].name, "log");
+    assert_eq!(
+        actions[1].args,
+        vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "add", "field": "count", "value": 1 }
+            ]
+        })]
+    );
+}
+
+#[test]
+fn parse_static_assign_stays_flat() {
+    let source = r#"
+        const m = createMachine({
+          id: 'assignStatic',
+          initial: 'idle',
+          context: { count: 0, flag: false },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ count: 5, flag: true }) },
+              },
+            },
+          },
+        });
+    "#;
+    let machine = parse(source).unwrap();
+    let actions = transition_actions(&machine, "STEP");
+    assert_eq!(
+        actions[0].args,
+        vec![
+            serde_json::json!("count"),
+            serde_json::json!(5),
+            serde_json::json!("flag"),
+            serde_json::json!(true),
+        ]
+    );
+}
+
+#[test]
+fn parse_dynamic_assign_literal_return_value() {
+    let source = r#"
+        const m = createMachine({
+          id: 'assignLiteral',
+          initial: 'idle',
+          context: { status: '' },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ status: () => 'done' }) },
+              },
+            },
+          },
+        });
+    "#;
+    let machine = parse(source).unwrap();
+    let actions = transition_actions(&machine, "STEP");
+    assert_eq!(
+        actions[0].args,
+        vec![serde_json::json!({
+            "$assign_ops": [
+                { "op": "set", "field": "status", "value": "done" }
+            ]
+        })]
+    );
+}
+
+#[test]
+fn reject_dynamic_assign_multiplication() {
+    let source = r#"
+        const m = createMachine({
+          id: 'badMul',
+          initial: 'idle',
+          context: { a: 1, b: 2 },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ c: ({ context }) => context.a * context.b }) },
+              },
+            },
+          },
+        });
+    "#;
+    let err = parse(source).unwrap_err();
+    assert!(
+        err.to_string().contains('*'),
+        "error should name the unsupported operator: {}",
+        err
+    );
+}
+
+#[test]
+fn reject_dynamic_assign_method_call() {
+    let source = r#"
+        const m = createMachine({
+          id: 'badMethod',
+          initial: 'idle',
+          context: { name: '' },
+          states: {
+            idle: {
+              on: {
+                STEP: {
+                  actions: assign({ name: ({ event }) => event.x.toUpperCase() }),
+                },
+              },
+            },
+          },
+        });
+    "#;
+    let err = parse(source).unwrap_err();
+    assert!(
+        err.to_string().to_lowercase().contains("method"),
+        "error should name the method call: {}",
+        err
+    );
+}
+
+#[test]
+fn reject_dynamic_assign_unknown_identifier() {
+    let source = r#"
+        const m = createMachine({
+          id: 'badIdent',
+          initial: 'idle',
+          context: { count: 0 },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ count: ({ context }) => helper(context.count) }) },
+              },
+            },
+          },
+        });
+    "#;
+    let err = parse(source).unwrap_err();
+    assert!(
+        err.to_string().contains("helper"),
+        "error should name the unknown identifier: {}",
+        err
+    );
+}
+
+#[test]
+fn reject_dynamic_assign_non_destructured_param() {
+    let source = r#"
+        const m = createMachine({
+          id: 'badParam',
+          initial: 'idle',
+          context: { count: 0 },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ count: (ctx) => ctx.count + 1 }) },
+              },
+            },
+          },
+        });
+    "#;
+    let err = parse(source).unwrap_err();
+    assert!(
+        err.to_string().contains("context"),
+        "error should mention the expected ({{ context, event }}) form: {}",
+        err
+    );
+}
+
+#[test]
+fn reject_dynamic_assign_block_body() {
+    let source = r#"
+        const m = createMachine({
+          id: 'badBlock',
+          initial: 'idle',
+          context: { count: 0 },
+          states: {
+            idle: {
+              on: {
+                STEP: {
+                  actions: assign({
+                    count: ({ context }) => {
+                      return context.count + 1;
+                    },
+                  }),
+                },
+              },
+            },
+          },
+        });
+    "#;
+    let err = parse(source).unwrap_err();
+    assert!(
+        err.to_string().to_lowercase().contains("expression"),
+        "error should require an expression body: {}",
+        err
+    );
+}
+
+#[test]
+fn reject_dynamic_assign_arithmetic_on_other_field() {
+    let source = r#"
+        const m = createMachine({
+          id: 'badOther',
+          initial: 'idle',
+          context: { a: 0, b: 0 },
+          states: {
+            idle: {
+              on: {
+                STEP: { actions: assign({ b: ({ context }) => context.a + 1 }) },
+              },
+            },
+          },
+        });
+    "#;
+    let err = parse(source).unwrap_err();
+    assert!(
+        err.to_string().contains("'b'"),
+        "error should name the assigned field: {}",
+        err
+    );
+}

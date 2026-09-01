@@ -7,6 +7,7 @@ pub enum ActorStatus {
     Running,
     Stopped,
     Error,
+    Done,
 }
 
 /// Handle to a spawned actor — allows sending events and querying state.

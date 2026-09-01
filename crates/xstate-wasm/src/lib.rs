@@ -1,9 +1,12 @@
+use serde::ser::Serialize as _;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use xstate_backend_native::NativeActorSystem;
-use xstate_core::actor_logic::{MachineLogic, ReducerLogic};
+use xstate_core::actions::{ActionImpl, ActionRegistry};
+use xstate_core::actor_logic::ReducerLogic;
 use xstate_core::backend::{ActorStatus, ActorSystem as BackendActorSystem};
+use xstate_core::guards::{GuardImpl, GuardRegistry};
 use xstate_core::{Interpreter, MockClock};
 use xstate_ir::Machine;
 
@@ -13,12 +16,81 @@ thread_local! {
 }
 
 fn json_to_js(val: &serde_json::Value) -> JsValue {
-    JsValue::from_str(&val.to_string())
+    val.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .unwrap_or(JsValue::NULL)
+}
+
+fn report_callback_error(kind: &str, name: &str, err: &JsValue, fallback: &str) {
+    let detail = js_sys::Error::from(err.clone()).to_string();
+    let console = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("console"))
+        .unwrap_or(JsValue::UNDEFINED);
+    let error_fn = js_sys::Reflect::get(&console, &JsValue::from_str("error"))
+        .ok()
+        .and_then(|f| f.dyn_into::<js_sys::Function>().ok());
+    if let Some(error_fn) = error_fn {
+        let message = JsValue::from_str(&format!(
+            "xstate-wasm: {kind} '{name}' threw: {detail}. {fallback}"
+        ));
+        let _ = error_fn.call1(&console, &message);
+    }
 }
 
 #[wasm_bindgen(start)]
 pub fn init() {
     console_error_panic_hook::set_once();
+}
+
+fn js_guards_registry() -> GuardRegistry {
+    let mut registry = GuardRegistry::new();
+    let names: Vec<String> = JS_GUARDS.with(|guards| guards.borrow().keys().cloned().collect());
+    for name in names {
+        let lookup = name.clone();
+        registry.register(GuardImpl::new(name, move |ctx, event| {
+            JS_GUARDS.with(|guards| {
+                let guards = guards.borrow();
+                let Some(func) = guards.get(&lookup) else {
+                    return true;
+                };
+                let ctx_val = json_to_js(ctx);
+                let evt_val = json_to_js(event);
+                match func.call2(&JsValue::NULL, &ctx_val, &evt_val) {
+                    Ok(val) => val.as_bool().unwrap_or(true),
+                    Err(err) => {
+                        report_callback_error(
+                            "guard",
+                            &lookup,
+                            &err,
+                            "Allowing transition by default.",
+                        );
+                        true
+                    }
+                }
+            })
+        }));
+    }
+    registry
+}
+
+fn js_actions_registry() -> ActionRegistry {
+    let mut registry = ActionRegistry::new();
+    let names: Vec<String> = JS_ACTIONS.with(|actions| actions.borrow().keys().cloned().collect());
+    for name in names {
+        let lookup = name.clone();
+        registry.register(ActionImpl::new(name, move |args, event, _ctx| {
+            JS_ACTIONS.with(|actions| {
+                let actions = actions.borrow();
+                let Some(func) = actions.get(&lookup) else {
+                    return;
+                };
+                let args_val = json_to_js(&serde_json::Value::Array(args.to_vec()));
+                let evt_val = json_to_js(event);
+                if let Err(err) = func.call2(&JsValue::NULL, &args_val, &evt_val) {
+                    report_callback_error("action", &lookup, &err, "Action skipped.");
+                }
+            })
+        }));
+    }
+    registry
 }
 
 #[wasm_bindgen(js_name = registerGuard)]
@@ -74,6 +146,31 @@ impl JsMachine {
         serde_json::to_string(&snap).unwrap_or_default()
     }
 
+    #[wasm_bindgen(js_name = persistedSnapshot)]
+    pub fn persisted_snapshot(&self) -> String {
+        let state = self.state.borrow();
+        let context = self.context.borrow();
+        let snap = self.interpreter.persisted_snapshot(&state, &context);
+        serde_json::to_string(&snap).unwrap_or_default()
+    }
+
+    #[wasm_bindgen(js_name = restore)]
+    pub fn restore(machine_json: &str, snapshot_json: &str) -> Result<JsMachine, JsValue> {
+        let machine: Machine = serde_json::from_str(machine_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
+        let snapshot: serde_json::Value = serde_json::from_str(snapshot_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid snapshot JSON: {}", e)))?;
+        let interpreter = Interpreter::new(machine);
+        let (state, context) = interpreter
+            .restore_persisted(&snapshot)
+            .map_err(|e| JsValue::from_str(&format!("Restore failed: {}", e)))?;
+        Ok(JsMachine {
+            interpreter,
+            state: RefCell::new(state),
+            context: RefCell::new(context),
+        })
+    }
+
     #[wasm_bindgen(js_name = send)]
     pub fn send(&self, event_json: &str) -> Option<String> {
         let event: serde_json::Value = serde_json::from_str(event_json).ok()?;
@@ -90,7 +187,15 @@ impl JsMachine {
                         let evt_val = json_to_js(event_payload);
                         match func.call2(&this, &ctx_val, &evt_val) {
                             Ok(val) => val.as_bool().unwrap_or(true),
-                            Err(_) => true,
+                            Err(err) => {
+                                report_callback_error(
+                                    "guard",
+                                    name,
+                                    &err,
+                                    "Allowing transition by default.",
+                                );
+                                true
+                            }
                         }
                     } else {
                         true
@@ -105,7 +210,9 @@ impl JsMachine {
                         let this = JsValue::NULL;
                         let args_val = json_to_js(&serde_json::Value::Array(args.to_vec()));
                         let evt_val = json_to_js(event_payload);
-                        let _ = func.call2(&this, &args_val, &evt_val);
+                        if let Err(err) = func.call2(&this, &args_val, &evt_val) {
+                            report_callback_error("action", name, &err, "Action skipped.");
+                        }
                     }
                 });
             };
@@ -160,18 +267,24 @@ impl Default for JsActorSystem {
 impl JsActorSystem {
     #[wasm_bindgen(constructor)]
     pub fn new() -> JsActorSystem {
-        JsActorSystem {
-            system: NativeActorSystem::new(),
-        }
+        let system = NativeActorSystem::new();
+        system.set_registry_factory(|| (js_guards_registry(), js_actions_registry()));
+        JsActorSystem { system }
     }
 
     #[wasm_bindgen(js_name = spawn)]
     pub fn spawn(&self, id: &str, machine_json: &str) -> Result<(), JsValue> {
         let machine: Machine = serde_json::from_str(machine_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
-        let interp = Interpreter::new(machine);
-        let logic = MachineLogic::new(interp, MockClock::new(0));
-        self.system.spawn(id, Box::new(logic));
+        self.system.spawn_machine(id, machine);
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = registerMachine)]
+    pub fn register_machine(&self, name: &str, machine_json: &str) -> Result<(), JsValue> {
+        let machine: Machine = serde_json::from_str(machine_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
+        self.system.register_machine(name, machine);
         Ok(())
     }
 
@@ -182,6 +295,28 @@ impl JsActorSystem {
         let logic = ReducerLogic::new(id, initial, |state, _event| (state.clone(), vec![]));
         self.system.spawn(id, Box::new(logic));
         Ok(())
+    }
+
+    #[wasm_bindgen(js_name = spawnFromState)]
+    pub fn spawn_from_state(
+        &self,
+        id: &str,
+        machine_json: &str,
+        snapshot_json: &str,
+    ) -> Result<(), JsValue> {
+        let machine: Machine = serde_json::from_str(machine_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
+        let snapshot: serde_json::Value = serde_json::from_str(snapshot_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid snapshot JSON: {}", e)))?;
+        self.system
+            .spawn_machine_from_persisted(id, machine, &snapshot)
+            .map_err(|e| JsValue::from_str(&format!("Restore failed: {}", e)))?;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = childrenOf)]
+    pub fn children_of(&self, id: &str) -> String {
+        serde_json::to_string(&self.system.children_of(id)).unwrap_or_default()
     }
 
     #[wasm_bindgen(js_name = sendTo)]
@@ -210,6 +345,7 @@ impl JsActorSystem {
                 ActorStatus::Running => "running",
                 ActorStatus::Stopped => "stopped",
                 ActorStatus::Error => "error",
+                ActorStatus::Done => "done",
             }
             .to_string()
         })

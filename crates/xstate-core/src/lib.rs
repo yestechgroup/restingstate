@@ -22,3 +22,4 @@ pub use interpreter::Interpreter;
 pub use machine::{Actions, Guards, Machine};
 pub use snapshot::Snapshot;
 pub use state_value::StateValue;
+pub use xstate_ir;

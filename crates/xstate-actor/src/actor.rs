@@ -4,8 +4,10 @@ use tokio::sync::mpsc;
 
 use xstate_core::Interpreter;
 use xstate_core::StateValue;
+use xstate_core::actions::ActionRegistry;
 use xstate_core::actor_logic::ActorLogic;
 use xstate_core::clock::Clock;
+use xstate_core::guards::GuardRegistry;
 use xstate_ir::{StateNode, StateType};
 
 use crate::handle::{ActorHandle, ActorStatus};
@@ -74,6 +76,8 @@ pub(crate) fn spawn_actor(
     on_stop: impl Fn() + Send + 'static,
     outgoing: mpsc::UnboundedSender<ActorMessage>,
     spawn_tx: mpsc::UnboundedSender<SpawnRequest>,
+    guards: GuardRegistry,
+    actions: ActionRegistry,
 ) -> Box<dyn ActorHandle> {
     let state = initial_state.unwrap_or_else(|| interpreter.initial_state());
     let context = initial_context.unwrap_or_else(|| interpreter.initial_context());
@@ -108,16 +112,24 @@ pub(crate) fn spawn_actor(
                         continue;
                     }
 
-                    let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+                    let guards = |name: &str, ctx: &serde_json::Value, evt: &serde_json::Value| {
+                        guards.evaluate(name, ctx, evt)
+                    };
 
                     let outgoing_actions = outgoing.clone();
                     let parent_actions = parent_id.clone();
                     let spawn_tx_for_actions = spawn_tx.clone();
                     let actor_id_for_actions = actor_id.clone();
+                    let registry_actions = &actions;
+                    // SAFETY: `raw` points to `current_context`, which `send`
+                    // also borrows mutably. The closures are called
+                    // sequentially by `send` (never re-entrantly), so there is
+                    // no data race.
+                    let raw_context = &mut current_context as *mut serde_json::Value;
                     let mut actions =
                         move |name: &str,
                               args: &[serde_json::Value],
-                              _event_payload: &serde_json::Value| {
+                              event_payload: &serde_json::Value| {
                             match name {
                                 "xstate.send_to" => {
                                     let target =
@@ -156,7 +168,9 @@ pub(crate) fn spawn_actor(
                                         actor_id: child_actor_id,
                                     });
                                 }
-                                _ => {}
+                                _ => registry_actions.dispatch(name, args, event_payload, unsafe {
+                                    &mut *raw_context
+                                }),
                             }
                         };
 

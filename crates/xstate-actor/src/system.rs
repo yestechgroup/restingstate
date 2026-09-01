@@ -4,8 +4,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::mpsc;
 
 use xstate_core::Interpreter;
+use xstate_core::actions::ActionRegistry;
 use xstate_core::actor_logic::ActorLogic;
 use xstate_core::clock::{Clock, MockClock};
+use xstate_core::guards::GuardRegistry;
 use xstate_ir::Machine;
 
 use crate::actor::{ActorMessage, SpawnRequest, spawn_actor, spawn_actor_logic};
@@ -97,6 +99,8 @@ impl ActorSystem {
                         on_stop,
                         spawn_outgoing.clone(),
                         spawn_spawn_tx.clone(),
+                        GuardRegistry::default(),
+                        ActionRegistry::default(),
                     );
                     spawn_actors
                         .lock()
@@ -143,6 +147,28 @@ impl ActorSystem {
         clock: impl Clock + 'static,
         id: String,
     ) -> String {
+        self.spawn_with_registries(
+            interpreter,
+            clock,
+            id,
+            GuardRegistry::default(),
+            ActionRegistry::default(),
+        )
+    }
+
+    /// Spawn an actor from an interpreter with guard/action registries.
+    /// Registered guards evaluate transitions by name; registered actions
+    /// dispatch by name unless the name is a builtin (`xstate.send_to`,
+    /// `xstate.send_parent`, `xstate.spawn`). Missing guards pass and missing
+    /// actions are no-ops. Returns the actor's ID.
+    pub fn spawn_with_registries(
+        &self,
+        interpreter: Interpreter,
+        clock: impl Clock + 'static,
+        id: String,
+        guards: GuardRegistry,
+        actions: ActionRegistry,
+    ) -> String {
         let handle = spawn_actor(
             interpreter,
             clock,
@@ -153,6 +179,8 @@ impl ActorSystem {
             || {},
             self.outgoing_tx.clone(),
             self.spawn_tx.clone(),
+            guards,
+            actions,
         );
         self.actors.lock().unwrap().insert(id.clone(), handle);
         id
@@ -199,6 +227,8 @@ impl ActorSystem {
             || {},
             self.outgoing_tx.clone(),
             self.spawn_tx.clone(),
+            GuardRegistry::default(),
+            ActionRegistry::default(),
         );
         self.actors.lock().unwrap().insert(id.clone(), handle);
         id
@@ -240,6 +270,8 @@ impl ActorSystem {
             on_stop,
             self.outgoing_tx.clone(),
             self.spawn_tx.clone(),
+            GuardRegistry::default(),
+            ActionRegistry::default(),
         );
         self.actors.lock().unwrap().insert(id.clone(), handle);
         id
@@ -264,9 +296,40 @@ impl ActorSystem {
             || {},
             self.outgoing_tx.clone(),
             self.spawn_tx.clone(),
+            GuardRegistry::default(),
+            ActionRegistry::default(),
         );
         self.actors.lock().unwrap().insert(id.clone(), handle);
         id
+    }
+
+    /// Spawn an actor from a versioned persisted snapshot (`persisted_snapshot`
+    /// format). Restores the state, context, history map and `after` entry
+    /// times into the actor's interpreter, so history targets and preserved
+    /// deadlines keep working. Returns the actor's ID.
+    pub fn spawn_with_persisted(
+        &self,
+        interpreter: Interpreter,
+        clock: impl Clock + 'static,
+        id: String,
+        persisted: &serde_json::Value,
+    ) -> Result<String, xstate_core::interpreter::PersistError> {
+        let (state, context) = interpreter.restore_persisted(persisted)?;
+        let handle = spawn_actor(
+            interpreter,
+            clock,
+            String::new(),
+            id.clone(),
+            Some(state),
+            Some(context),
+            || {},
+            self.outgoing_tx.clone(),
+            self.spawn_tx.clone(),
+            GuardRegistry::default(),
+            ActionRegistry::default(),
+        );
+        self.actors.lock().unwrap().insert(id.clone(), handle);
+        Ok(id)
     }
 
     /// Send an event to a named actor.
@@ -1081,5 +1144,382 @@ mod tests {
         // Full integration would require spawn_actor to call subscribers.
         let snap = system.snapshot(&id).unwrap();
         assert_eq!(snap["value"], serde_json::json!("active"));
+    }
+
+    #[tokio::test]
+    async fn registry_guard_blocks_transition_on_tokio_backend() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use xstate_core::actions::ActionRegistry;
+        use xstate_core::guards::{GuardImpl, GuardRegistry};
+
+        let allowed = Arc::new(AtomicBool::new(false));
+        let flag = allowed.clone();
+        let mut guards = GuardRegistry::new();
+        guards.register(GuardImpl::new("canToggle", move |_, _| {
+            flag.load(Ordering::SeqCst)
+        }));
+
+        let machine = Machine {
+            id: "guarded".into(),
+            initial: "off".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                StateNode {
+                    name: "off".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "TOGGLE".into(),
+                        target: Some("on".into()),
+                        guard: Some(xstate_ir::Guard {
+                            name: "canToggle".into(),
+                        }),
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                        targets: vec![],
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+                StateNode {
+                    name: "on".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+            ],
+            setup: None,
+        };
+
+        let system = ActorSystem::new();
+        let id = system.spawn_with_registries(
+            Interpreter::new(machine),
+            MockClock::new(0),
+            "guarded".into(),
+            guards,
+            ActionRegistry::new(),
+        );
+
+        system.send_to(&id, serde_json::json!({"type": "TOGGLE"}));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let snap = system.snapshot(&id).unwrap();
+        assert_eq!(snap["value"], serde_json::json!("off"));
+
+        allowed.store(true, Ordering::SeqCst);
+        system.send_to(&id, serde_json::json!({"type": "TOGGLE"}));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let snap = system.snapshot(&id).unwrap();
+        assert_eq!(snap["value"], serde_json::json!("on"));
+    }
+
+    #[tokio::test]
+    async fn registry_action_composes_with_send_to_builtin() {
+        use xstate_core::actions::{ActionImpl, ActionRegistry};
+        use xstate_core::guards::GuardRegistry;
+
+        let child_machine = Machine {
+            id: "child".into(),
+            initial: "idle".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                StateNode {
+                    name: "idle".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "POKE".into(),
+                        target: Some("poked".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                        targets: vec![],
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+                StateNode {
+                    name: "poked".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+            ],
+            setup: None,
+        };
+
+        let mut actions = ActionRegistry::new();
+        actions.register(ActionImpl::new("recordIt", |_, _, ctx| {
+            ctx.as_object_mut()
+                .unwrap()
+                .insert("fired".into(), serde_json::json!(true));
+        }));
+
+        let parent_machine = Machine {
+            id: "parent".into(),
+            initial: "idle".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![StateNode {
+                name: "idle".into(),
+                description: None,
+                initial: None,
+                entry: vec![],
+                exit: vec![],
+                transitions: vec![Transition {
+                    event: "TRIGGER".into(),
+                    target: None,
+                    guard: None,
+                    actions: vec![
+                        Action {
+                            name: "recordIt".into(),
+                            args: vec![],
+                        },
+                        Action {
+                            name: "xstate.send_to".into(),
+                            args: vec![
+                                serde_json::json!("child"),
+                                serde_json::json!({"type": "POKE"}),
+                            ],
+                        },
+                    ],
+                    description: None,
+                    delay_ms: None,
+                    targets: vec![],
+                }],
+                children: vec![],
+                node_type: StateType::Atomic,
+                tags: vec![],
+                invoke: None,
+                on_done: vec![],
+                output: None,
+            }],
+            setup: None,
+        };
+
+        let system = ActorSystem::new();
+        let child_id = system.spawn(
+            Interpreter::new(child_machine),
+            MockClock::new(0),
+            "child".into(),
+        );
+        let parent_id = system.spawn_with_registries(
+            Interpreter::new(parent_machine),
+            MockClock::new(0),
+            "parent".into(),
+            GuardRegistry::new(),
+            actions,
+        );
+
+        system.send_to(&parent_id, serde_json::json!({"type": "TRIGGER"}));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let parent_snap = system.snapshot(&parent_id).unwrap();
+        assert_eq!(parent_snap["context"]["fired"], true);
+
+        let child_snap = system.snapshot(&child_id).unwrap();
+        assert_eq!(child_snap["value"], serde_json::json!("poked"));
+    }
+
+    fn persisted_history_machine() -> Machine {
+        Machine {
+            id: "history".into(),
+            initial: "main".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                StateNode {
+                    name: "main".into(),
+                    description: None,
+                    initial: Some("b1".into()),
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "SWITCH".into(),
+                        target: Some("other".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                        targets: vec![],
+                    }],
+                    children: vec![
+                        StateNode {
+                            name: "b1".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![Transition {
+                                event: "NEXT".into(),
+                                target: Some("b2".into()),
+                                guard: None,
+                                actions: vec![],
+                                description: None,
+                                delay_ms: None,
+                                targets: vec![],
+                            }],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                            on_done: vec![],
+                            output: None,
+                        },
+                        StateNode {
+                            name: "b2".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::Atomic,
+                            tags: vec![],
+                            invoke: None,
+                            on_done: vec![],
+                            output: None,
+                        },
+                        StateNode {
+                            name: "hist".into(),
+                            description: None,
+                            initial: None,
+                            entry: vec![],
+                            exit: vec![],
+                            transitions: vec![],
+                            children: vec![],
+                            node_type: StateType::History,
+                            tags: vec![],
+                            invoke: None,
+                            on_done: vec![],
+                            output: None,
+                        },
+                    ],
+                    node_type: StateType::Compound,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+                StateNode {
+                    name: "other".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "BACK".into(),
+                        target: Some("hist".into()),
+                        guard: None,
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                        targets: vec![],
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+            ],
+            setup: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn spawn_with_persisted_restores_history() {
+        let machine = persisted_history_machine();
+        let source = Interpreter::new(machine.clone());
+        let mut state = source.initial_state();
+        let mut ctx = source.initial_context();
+        state = source
+            .send(
+                &state,
+                &serde_json::json!({"type": "NEXT"}),
+                &mut ctx,
+                &|_, _, _| true,
+                &mut |_, _, _| {},
+                &MockClock::new(0),
+            )
+            .unwrap();
+        state = source
+            .send(
+                &state,
+                &serde_json::json!({"type": "SWITCH"}),
+                &mut ctx,
+                &|_, _, _| true,
+                &mut |_, _, _| {},
+                &MockClock::new(0),
+            )
+            .unwrap();
+        let persisted = source.persisted_snapshot(&state, &ctx);
+        assert_eq!(persisted["history"]["main"], serde_json::json!("b2"));
+
+        let system = ActorSystem::new();
+        let id = system
+            .spawn_with_persisted(
+                Interpreter::new(machine),
+                MockClock::new(0),
+                "restored".into(),
+                &persisted,
+            )
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let snap = system.snapshot(&id).unwrap();
+        assert_eq!(snap["value"], serde_json::json!("other"));
+
+        system.send_to(&id, serde_json::json!({"type": "BACK"}));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let snap = system.snapshot(&id).unwrap();
+        assert_eq!(
+            snap["value"],
+            serde_json::json!({"main": "b2"}),
+            "restored actor must return to the recorded history child b2, not initial b1"
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_with_persisted_rejects_invalid_json() {
+        let system = ActorSystem::new();
+        let result = system.spawn_with_persisted(
+            Interpreter::new(persisted_history_machine()),
+            MockClock::new(0),
+            "bad".into(),
+            &serde_json::json!({"version": 99, "value": "main", "context": {}}),
+        );
+        assert!(result.is_err());
     }
 }

@@ -1,4 +1,6 @@
+use crate::actions::ActionRegistry;
 use crate::clock::Clock;
+use crate::guards::GuardRegistry;
 use crate::interpreter::Interpreter;
 use crate::state_value::StateValue;
 use std::sync::Mutex;
@@ -56,16 +58,64 @@ pub struct MachineLogic {
     interpreter: Mutex<Interpreter>,
     machine_name: String,
     clock: Mutex<Box<dyn Clock>>,
+    guards: GuardRegistry,
+    actions: ActionRegistry,
+    initial: Option<serde_json::Value>,
 }
 
 impl MachineLogic {
     pub fn new(interpreter: Interpreter, clock: impl Clock + 'static) -> Self {
+        Self::new_with_registries(
+            interpreter,
+            clock,
+            GuardRegistry::default(),
+            ActionRegistry::default(),
+        )
+    }
+
+    pub fn new_with_registries(
+        interpreter: Interpreter,
+        clock: impl Clock + 'static,
+        guards: GuardRegistry,
+        actions: ActionRegistry,
+    ) -> Self {
         let machine_name = interpreter.machine().id.clone();
         MachineLogic {
             interpreter: Mutex::new(interpreter),
             machine_name,
             clock: Mutex::new(Box::new(clock)),
+            guards,
+            actions,
+            initial: None,
         }
+    }
+
+    pub fn with_initial_snapshot(mut self, snapshot: serde_json::Value) -> Self {
+        self.initial = Some(snapshot);
+        self
+    }
+
+    pub fn persisted_snapshot(&self, snapshot: &serde_json::Value) -> serde_json::Value {
+        let interp = self.interpreter.lock().unwrap();
+        let state: StateValue = serde_json::from_value(snapshot["value"].clone())
+            .unwrap_or_else(|_| interp.initial_state());
+        let context = snapshot
+            .get("context")
+            .cloned()
+            .unwrap_or_else(|| interp.initial_context());
+        interp.persisted_snapshot(&state, &context)
+    }
+
+    pub fn restore_persisted(
+        &self,
+        json: &serde_json::Value,
+    ) -> Result<serde_json::Value, crate::interpreter::PersistError> {
+        let interp = self.interpreter.lock().unwrap();
+        let (state, context) = interp.restore_persisted(json)?;
+        Ok(serde_json::json!({
+            "value": serde_json::to_value(&state).unwrap_or_default(),
+            "context": context,
+        }))
     }
 }
 
@@ -75,6 +125,9 @@ impl ActorLogic for MachineLogic {
     }
 
     fn initial_snapshot(&self) -> serde_json::Value {
+        if let Some(snapshot) = &self.initial {
+            return snapshot.clone();
+        }
         let interp = self.interpreter.lock().unwrap();
         let state = interp.initial_state();
         let context = interp.initial_context();
@@ -97,16 +150,13 @@ impl ActorLogic for MachineLogic {
             .cloned()
             .unwrap_or_else(|| interp.initial_context());
 
-        let guards = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
-        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
-
         let clock = self.clock.lock().unwrap();
-        let new_state = interp.send(
+        let new_state = interp.send_with_registry(
             &state,
             &event,
             &mut context,
-            &guards,
-            &mut actions,
+            &self.guards,
+            &self.actions,
             clock.as_ref(),
         );
         drop(clock);
@@ -546,5 +596,129 @@ mod tests {
 
         logic.receive(serde_json::json!({"type": "TOGGLE"}), &mut snap);
         assert_eq!(snap["value"], "off");
+    }
+
+    fn atomic_node(name: &str, transitions: Vec<xstate_ir::Transition>) -> xstate_ir::StateNode {
+        xstate_ir::StateNode {
+            name: name.into(),
+            description: None,
+            initial: None,
+            entry: vec![],
+            exit: vec![],
+            transitions,
+            children: vec![],
+            node_type: xstate_ir::StateType::Atomic,
+            tags: vec![],
+            invoke: None,
+            on_done: vec![],
+            output: None,
+        }
+    }
+
+    fn trans(
+        event: &str,
+        target: Option<&str>,
+        guard: Option<&str>,
+        actions: Vec<xstate_ir::Action>,
+    ) -> xstate_ir::Transition {
+        xstate_ir::Transition {
+            event: event.into(),
+            target: target.map(Into::into),
+            guard: guard.map(|g| xstate_ir::Guard { name: g.into() }),
+            actions,
+            description: None,
+            delay_ms: None,
+            targets: vec![],
+        }
+    }
+
+    #[test]
+    fn machine_logic_registry_guard_blocks_and_fires() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let allowed = Arc::new(AtomicBool::new(false));
+        let flag = allowed.clone();
+        let mut guards = crate::guards::GuardRegistry::new();
+        guards.register(crate::guards::GuardImpl::new("canToggle", move |_, _| {
+            flag.load(Ordering::SeqCst)
+        }));
+
+        let machine = xstate_ir::Machine {
+            id: "guarded".into(),
+            initial: "off".into(),
+            context: xstate_ir::ContextSchema { fields: vec![] },
+            states: vec![
+                atomic_node(
+                    "off",
+                    vec![trans("TOGGLE", Some("on"), Some("canToggle"), vec![])],
+                ),
+                atomic_node("on", vec![]),
+            ],
+            setup: None,
+        };
+        let interp = Interpreter::new(machine);
+        let mut logic = MachineLogic::new_with_registries(
+            interp,
+            crate::clock::MockClock::new(0),
+            guards,
+            crate::actions::ActionRegistry::new(),
+        );
+
+        let mut snap = logic.initial_snapshot();
+        logic.receive(serde_json::json!({"type": "TOGGLE"}), &mut snap);
+        assert_eq!(snap["value"], "off");
+
+        allowed.store(true, Ordering::SeqCst);
+        logic.receive(serde_json::json!({"type": "TOGGLE"}), &mut snap);
+        assert_eq!(snap["value"], "on");
+    }
+
+    #[test]
+    fn machine_logic_registry_assign_action_mutates_context() {
+        use xstate_ir::ContextField;
+
+        let machine = xstate_ir::Machine {
+            id: "assignable".into(),
+            initial: "idle".into(),
+            context: xstate_ir::ContextSchema {
+                fields: vec![ContextField {
+                    name: "count".into(),
+                    type_name: "i64".into(),
+                    default_value: serde_json::json!(0),
+                }],
+            },
+            states: vec![atomic_node(
+                "idle",
+                vec![trans(
+                    "INCREMENT",
+                    None,
+                    None,
+                    vec![xstate_ir::Action {
+                        name: "assign".into(),
+                        args: vec![],
+                    }],
+                )],
+            )],
+            setup: None,
+        };
+
+        let mut actions = crate::actions::ActionRegistry::new();
+        actions.register(crate::actions::assign_action(
+            |_, _| serde_json::json!({"count": 42}),
+        ));
+
+        let interp = Interpreter::new(machine);
+        let mut logic = MachineLogic::new_with_registries(
+            interp,
+            crate::clock::MockClock::new(0),
+            crate::guards::GuardRegistry::new(),
+            actions,
+        );
+
+        let mut snap = logic.initial_snapshot();
+        assert_eq!(snap["context"]["count"], 0);
+        logic.receive(serde_json::json!({"type": "INCREMENT"}), &mut snap);
+        assert_eq!(snap["context"]["count"], 42);
     }
 }

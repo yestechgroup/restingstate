@@ -5,6 +5,7 @@ use oxc_ast::ast::*;
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 
+use crate::assign;
 use crate::error::ParseError;
 use xstate_ir::{
     Action, ActionDef, ActorDef, ContextField, ContextSchema, Guard, GuardDef, InvokeConfig,
@@ -691,7 +692,7 @@ fn extract_string_array(arr: &ArrayExpression) -> Vec<String> {
 // Object property helpers
 // ---------------------------------------------------------------------------
 
-fn property_key_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
+pub(crate) fn property_key_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
     if let PropertyKey::StaticIdentifier(id) = key {
         return Some(id.name.as_ref());
     }
@@ -752,7 +753,7 @@ fn extract_context_schema(obj: &ObjectExpression) -> ContextSchema {
     ContextSchema { fields }
 }
 
-fn expr_to_type_and_value(expr: &Expression) -> (String, serde_json::Value) {
+pub(crate) fn expr_to_type_and_value(expr: &Expression) -> (String, serde_json::Value) {
     match expr {
         Expression::StringLiteral(s) => (
             "string".into(),
@@ -898,7 +899,7 @@ fn extract_state_node(
                     delay_ms: None,
                 }]),
                 Expression::ObjectExpression(on_done_obj) => {
-                    Ok(vec![extract_transition_from_obj("", on_done_obj)])
+                    Ok(vec![extract_transition_from_obj("", on_done_obj)?])
                 }
                 Expression::ArrayExpression(arr) => {
                     let mut transitions = Vec::new();
@@ -917,7 +918,7 @@ fn extract_state_node(
                                     });
                                 }
                                 Expression::ObjectExpression(obj) => {
-                                    transitions.push(extract_transition_from_obj("", obj));
+                                    transitions.push(extract_transition_from_obj("", obj)?);
                                 }
                                 _ => {}
                             }
@@ -1064,22 +1065,22 @@ fn extract_transition_value(
             let mut transitions = Vec::new();
             for elem in arr.elements.iter() {
                 if let Some(elem_expr) = elem.as_expression() {
-                    let t = extract_single_transition(event, elem_expr);
+                    let t = extract_single_transition(event, elem_expr)?;
                     transitions.push(t);
                 }
             }
             Ok(transitions)
         }
         // Object: `on: { SUBMIT: { target: 'processing', actions: ['log'] } }`
-        Expression::ObjectExpression(obj) => Ok(vec![extract_transition_from_obj(event, obj)]),
+        Expression::ObjectExpression(obj) => Ok(vec![extract_transition_from_obj(event, obj)?]),
         _ => Ok(vec![]),
     }
 }
 
-fn extract_single_transition(event: &str, expr: &Expression) -> Transition {
+fn extract_single_transition(event: &str, expr: &Expression) -> Result<Transition, ParseError> {
     match expr {
         // String inside array: `[{ target: 'a' }, 'b']` -> simple target
-        Expression::StringLiteral(s) => Transition {
+        Expression::StringLiteral(s) => Ok(Transition {
             event: event.to_string(),
             target: Some(s.value.to_string()),
             guard: None,
@@ -1087,9 +1088,9 @@ fn extract_single_transition(event: &str, expr: &Expression) -> Transition {
             targets: vec![],
             actions: vec![],
             description: None,
-        },
+        }),
         Expression::ObjectExpression(obj) => extract_transition_from_obj(event, obj),
-        _ => Transition {
+        _ => Ok(Transition {
             event: event.to_string(),
             target: None,
             guard: None,
@@ -1097,11 +1098,14 @@ fn extract_single_transition(event: &str, expr: &Expression) -> Transition {
             targets: vec![],
             actions: vec![],
             description: None,
-        },
+        }),
     }
 }
 
-fn extract_transition_from_obj(event: &str, obj: &ObjectExpression) -> Transition {
+fn extract_transition_from_obj(
+    event: &str,
+    obj: &ObjectExpression,
+) -> Result<Transition, ParseError> {
     let target = extract_string_prop(obj, "target");
 
     let guard = obj
@@ -1111,11 +1115,12 @@ fn extract_transition_from_obj(event: &str, obj: &ObjectExpression) -> Transitio
     let actions = obj
         .get_object_prop_value("actions")
         .map(extract_actions_expr)
+        .transpose()?
         .unwrap_or_default();
 
     let description = extract_string_prop(obj, "description");
 
-    Transition {
+    Ok(Transition {
         event: event.to_string(),
         target,
         guard,
@@ -1123,7 +1128,7 @@ fn extract_transition_from_obj(event: &str, obj: &ObjectExpression) -> Transitio
         description,
         delay_ms: None,
         targets: vec![],
-    }
+    })
 }
 
 fn extract_always_transitions(arr: &ArrayExpression) -> Result<Vec<Transition>, ParseError> {
@@ -1133,7 +1138,7 @@ fn extract_always_transitions(arr: &ArrayExpression) -> Result<Vec<Transition>, 
         if let Some(elem_expr) = elem.as_expression() {
             match elem_expr {
                 Expression::ObjectExpression(obj) => {
-                    let t = extract_transition_from_obj("", obj);
+                    let t = extract_transition_from_obj("", obj)?;
                     transitions.push(t);
                 }
                 Expression::StringLiteral(s) => {
@@ -1215,7 +1220,7 @@ fn extract_invoke_config(invoke_obj: &ObjectExpression) -> Result<InvokeConfig, 
                     let t = extract_transition_from_obj(
                         &format!("done.invoke.{}", id.as_deref().unwrap_or(&src)),
                         obj,
-                    );
+                    )?;
                     Ok(vec![t])
                 }
                 _ => Err(ParseError::InvalidMachine("Invalid onDone value".into())),
@@ -1241,7 +1246,7 @@ fn extract_invoke_config(invoke_obj: &ObjectExpression) -> Result<InvokeConfig, 
                     let t = extract_transition_from_obj(
                         &format!("error.platform.{}", id.as_deref().unwrap_or(&src)),
                         obj,
-                    );
+                    )?;
                     Ok(vec![t])
                 }
                 _ => Err(ParseError::InvalidMachine("Invalid onError value".into())),
@@ -1285,41 +1290,47 @@ fn extract_guard_expr(expr: &Expression) -> Option<Guard> {
 // Actions
 // ---------------------------------------------------------------------------
 
-fn extract_actions_expr(expr: &Expression) -> Vec<Action> {
+fn extract_actions_expr(expr: &Expression) -> Result<Vec<Action>, ParseError> {
     match expr {
-        Expression::StringLiteral(s) => {
-            vec![Action {
-                name: s.value.to_string(),
-                args: vec![],
-            }]
+        Expression::StringLiteral(s) => Ok(vec![Action {
+            name: s.value.to_string(),
+            args: vec![],
+        }]),
+        Expression::ArrayExpression(arr) => {
+            let mut actions = Vec::new();
+            for elem in arr.elements.iter() {
+                if let Some(action) = extract_action_from_element(elem)? {
+                    actions.push(action);
+                }
+            }
+            Ok(actions)
         }
-        Expression::ArrayExpression(arr) => arr
-            .elements
-            .iter()
-            .filter_map(|elem| extract_action_from_element(elem))
-            .collect(),
         Expression::CallExpression(call) => {
             if is_assign_call(call) {
-                extract_assign_action(call)
-                    .map(|a| vec![a])
-                    .unwrap_or_default()
+                Ok(extract_assign_action(call)?.into_iter().collect())
             } else {
-                vec![]
+                Ok(vec![])
             }
         }
-        _ => vec![],
+        _ => Ok(vec![]),
     }
 }
 
-fn extract_action_from_element(elem: &ArrayExpressionElement) -> Option<Action> {
-    let expr = elem.as_expression()?;
+fn extract_action_from_element(
+    elem: &ArrayExpressionElement,
+) -> Result<Option<Action>, ParseError> {
+    let Some(expr) = elem.as_expression() else {
+        return Ok(None);
+    };
     match expr {
-        Expression::StringLiteral(s) => Some(Action {
+        Expression::StringLiteral(s) => Ok(Some(Action {
             name: s.value.to_string(),
             args: vec![],
-        }),
+        })),
         Expression::ObjectExpression(obj) => {
-            let name = extract_string_prop(obj, "type")?;
+            let Some(name) = extract_string_prop(obj, "type") else {
+                return Ok(None);
+            };
             let args: Vec<serde_json::Value> = obj
                 .properties
                 .iter()
@@ -1336,10 +1347,10 @@ fn extract_action_from_element(elem: &ArrayExpressionElement) -> Option<Action> 
                     }
                 })
                 .collect();
-            Some(Action { name, args })
+            Ok(Some(Action { name, args }))
         }
         Expression::CallExpression(call) if is_assign_call(call) => extract_assign_action(call),
-        _ => None,
+        _ => Ok(None),
     }
 }
 
@@ -1351,37 +1362,63 @@ fn is_assign_call(call: &CallExpression) -> bool {
     }
 }
 
-fn extract_assign_action(call: &CallExpression) -> Option<Action> {
-    let arg = call.arguments.first()?.as_expression()?;
+fn extract_assign_action(call: &CallExpression) -> Result<Option<Action>, ParseError> {
+    let Some(arg) = call.arguments.first().and_then(|a| a.as_expression()) else {
+        return Ok(None);
+    };
     let obj = match arg {
         Expression::ObjectExpression(o) => o,
-        _ => return None,
+        _ => return Ok(None),
     };
-    let mut args: Vec<serde_json::Value> = Vec::new();
+    let mut static_args: Vec<serde_json::Value> = Vec::new();
+    let mut ops: Vec<serde_json::Value> = Vec::new();
+    let mut has_dynamic = false;
     for p in obj.properties.iter() {
         let op = match p {
             ObjectPropertyKind::ObjectProperty(op) => op,
             _ => continue,
         };
-        let key = property_key_name(&op.key)?;
-        let val = match &op.value {
-            // Only extract literal values; skip functions/expressions
-            expr if is_literal_expression(expr) => expr_to_type_and_value(expr).1,
-            _ => continue,
+        let Some(key) = property_key_name(&op.key) else {
+            continue;
         };
-        args.push(serde_json::json!(key));
-        args.push(val);
+        let key = key.to_string();
+        match &op.value {
+            expr if is_literal_expression(expr) => {
+                let val = expr_to_type_and_value(expr).1;
+                static_args.push(serde_json::json!(key));
+                static_args.push(val.clone());
+                ops.push(serde_json::json!({
+                    "op": "set",
+                    "field": key,
+                    "value": val,
+                }));
+            }
+            Expression::ArrowFunctionExpression(arrow) => {
+                has_dynamic = true;
+                ops.push(assign::lower_updater(&key, arrow)?);
+            }
+            _ => {}
+        }
     }
-    if args.is_empty() {
-        return None;
+    if !has_dynamic {
+        if static_args.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(Action {
+            name: "assign".into(),
+            args: static_args,
+        }));
     }
-    Some(Action {
+    if ops.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(Action {
         name: "assign".into(),
-        args,
-    })
+        args: vec![serde_json::json!({ "$assign_ops": ops })],
+    }))
 }
 
-fn is_literal_expression(expr: &Expression) -> bool {
+pub(crate) fn is_literal_expression(expr: &Expression) -> bool {
     match expr {
         Expression::StringLiteral(_)
         | Expression::NumericLiteral(_)

@@ -1,5 +1,119 @@
 import { readFileSync } from "fs";
-import { createMachine, createActor, fromCallback } from "xstate";
+import { createMachine, createActor, fromCallback, assign } from "xstate";
+
+function getDottedPath(obj, dottedPath) {
+  let cur = obj;
+  for (const part of dottedPath.split(".")) {
+    if (cur === null || typeof cur !== "object") return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function setDottedPath(obj, dottedPath, value) {
+  const parts = dottedPath.split(".");
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (cur === null || typeof cur !== "object") return;
+    if (cur[parts[i]] === null || typeof cur[parts[i]] !== "object") {
+      cur[parts[i]] = {};
+    }
+    cur = cur[parts[i]];
+  }
+  if (cur !== null && typeof cur === "object") {
+    cur[parts[parts.length - 1]] = value;
+  }
+}
+
+function applyAssignOps(ops, context, event) {
+  const draft = structuredClone(context);
+  for (const op of ops) {
+    if (!op || typeof op !== "object") continue;
+    if (op.op === "set") {
+      if (typeof op.from === "string") {
+        const dot = op.from.indexOf(".");
+        if (dot < 0) continue;
+        const root = op.from.slice(0, dot);
+        const path = op.from.slice(dot + 1);
+        const source = root === "event" ? event : root === "context" ? draft : undefined;
+        if (source === undefined) continue;
+        const resolved = getDottedPath(source, path);
+        if (resolved === undefined) {
+          if ("default" in op) setDottedPath(draft, op.field, structuredClone(op.default));
+        } else {
+          setDottedPath(draft, op.field, structuredClone(resolved));
+        }
+      } else if ("value" in op) {
+        setDottedPath(draft, op.field, structuredClone(op.value));
+      }
+    } else if (op.op === "add" || op.op === "sub") {
+      const current = getDottedPath(draft, op.field);
+      const base =
+        typeof current === "number"
+          ? current
+          : "default" in op && typeof op.default === "number"
+            ? op.default
+            : undefined;
+      if (base === undefined || typeof op.value !== "number") continue;
+      setDottedPath(draft, op.field, op.op === "add" ? base + op.value : base - op.value);
+    }
+  }
+  return draft;
+}
+
+function materializeDynamicAssignActions(config) {
+  function convertAction(action) {
+    if (
+      action &&
+      typeof action === "object" &&
+      !Array.isArray(action) &&
+      Array.isArray(action.$assign_ops)
+    ) {
+      const ops = action.$assign_ops;
+      return assign(({ context, event }) => applyAssignOps(ops, context, event));
+    }
+    return action;
+  }
+
+  function convertActionList(actions) {
+    if (!Array.isArray(actions)) return actions;
+    return actions.map(convertAction);
+  }
+
+  function convertTransition(t) {
+    if (t && typeof t === "object" && !Array.isArray(t)) {
+      if (t.actions !== undefined) {
+        t.actions = convertActionList(t.actions);
+      }
+    }
+    return t;
+  }
+
+  function walk(node) {
+    if (!node || typeof node !== "object") return;
+    if (node.entry !== undefined) node.entry = convertActionList(node.entry);
+    if (node.exit !== undefined) node.exit = convertActionList(node.exit);
+    if (node.on) {
+      for (const [event, transitions] of Object.entries(node.on)) {
+        if (Array.isArray(transitions)) {
+          node.on[event] = transitions.map(convertTransition);
+        } else if (transitions && typeof transitions === "object") {
+          convertTransition(transitions);
+        }
+      }
+    }
+    if (Array.isArray(node.always)) {
+      node.always = node.always.map(convertTransition);
+    }
+    if (node.states) {
+      for (const child of Object.values(node.states)) {
+        walk(child);
+      }
+    }
+  }
+
+  walk(config);
+}
 
 function collectGuardNames(config) {
   const names = new Set();
@@ -323,6 +437,7 @@ for (const tv of testVectors) {
   let config;
   if (tv.machine_config) {
     config = JSON.parse(JSON.stringify(tv.machine_config));
+    materializeDynamicAssignActions(config);
   } else {
     const ir = tv.machine_ir || tv.machine;
     if (!ir) {
