@@ -1,0 +1,109 @@
+{
+  "machine_name": "assignCounter",
+  "machine_ir": {
+    "id": "assignCounter",
+    "initial": "idle",
+    "context": {
+      "fields": [
+        {
+          "name": "count",
+          "type_name": "number",
+          "default_value": 0
+        },
+        {
+          "name": "last",
+          "type_name": "string",
+          "default_value": ""
+        }
+      ]
+    },
+    "states": [
+      {
+        "name": "idle",
+        "type": "atomic",
+        "transitions": [
+          {
+            "event": "STEP",
+            "actions": [
+              {
+                "name": "assign",
+                "args": [
+                  {
+                    "$assign_ops": [
+                      { "op": "add", "field": "count", "value": 1 },
+                      { "op": "set", "field": "last", "from": "event.value" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "machine_config": {
+    "id": "assignCounter",
+    "initial": "idle",
+    "context": {
+      "count": 0,
+      "last": ""
+    },
+    "states": {
+      "idle": {
+        "on": {
+          "STEP": {
+            "actions": [
+              {
+                "$assign_ops": [
+                  { "op": "add", "field": "count", "value": 1 },
+                  { "op": "set", "field": "last", "from": "event.value" }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "protocol": {
+    "initial": {
+      "value": "idle",
+      "context": {
+        "count": 0,
+        "last": ""
+      }
+    },
+    "events": [
+      { "type": "STEP", "value": "a" },
+      { "type": "STEP", "value": "b" },
+      { "type": "STEP", "value": "c" }
+    ]
+  },
+  "expected": [
+    {
+      "step": 0,
+      "event": { "type": "STEP", "value": "a" },
+      "snapshot": {
+        "value": "idle",
+        "context": { "count": 1, "last": "a" }
+      }
+    },
+    {
+      "step": 1,
+      "event": { "type": "STEP", "value": "b" },
+      "snapshot": {
+        "value": "idle",
+        "context": { "count": 2, "last": "b" }
+      }
+    },
+    {
+      "step": 2,
+      "event": { "type": "STEP", "value": "c" },
+      "snapshot": {
+        "value": "idle",
+        "context": { "count": 3, "last": "c" }
+      }
+    }
+  ]
+}
