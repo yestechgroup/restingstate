@@ -1,3 +1,4 @@
+use serde::ser::Serialize as _;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
@@ -13,7 +14,23 @@ thread_local! {
 }
 
 fn json_to_js(val: &serde_json::Value) -> JsValue {
-    JsValue::from_str(&val.to_string())
+    val.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .unwrap_or(JsValue::NULL)
+}
+
+fn report_callback_error(kind: &str, name: &str, err: &JsValue, fallback: &str) {
+    let detail = js_sys::Error::from(err.clone()).to_string();
+    let console = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("console"))
+        .unwrap_or(JsValue::UNDEFINED);
+    let error_fn = js_sys::Reflect::get(&console, &JsValue::from_str("error"))
+        .ok()
+        .and_then(|f| f.dyn_into::<js_sys::Function>().ok());
+    if let Some(error_fn) = error_fn {
+        let message = JsValue::from_str(&format!(
+            "xstate-wasm: {kind} '{name}' threw: {detail}. {fallback}"
+        ));
+        let _ = error_fn.call1(&console, &message);
+    }
 }
 
 #[wasm_bindgen(start)]
@@ -90,7 +107,15 @@ impl JsMachine {
                         let evt_val = json_to_js(event_payload);
                         match func.call2(&this, &ctx_val, &evt_val) {
                             Ok(val) => val.as_bool().unwrap_or(true),
-                            Err(_) => true,
+                            Err(err) => {
+                                report_callback_error(
+                                    "guard",
+                                    name,
+                                    &err,
+                                    "Allowing transition by default.",
+                                );
+                                true
+                            }
                         }
                     } else {
                         true
@@ -105,7 +130,9 @@ impl JsMachine {
                         let this = JsValue::NULL;
                         let args_val = json_to_js(&serde_json::Value::Array(args.to_vec()));
                         let evt_val = json_to_js(event_payload);
-                        let _ = func.call2(&this, &args_val, &evt_val);
+                        if let Err(err) = func.call2(&this, &args_val, &evt_val) {
+                            report_callback_error("action", name, &err, "Action skipped.");
+                        }
                     }
                 });
             };
