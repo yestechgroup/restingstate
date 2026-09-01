@@ -145,6 +145,22 @@ fn run_action_by_name(
     actions(action_name, &[], event_payload);
 }
 
+fn validate_state_node(node: &StateNode) -> Result<(), MachineValidationError> {
+    if node.node_type == StateType::Compound
+        && let Some(initial) = &node.initial
+        && !node.children.iter().any(|c| &c.name == initial)
+    {
+        return Err(MachineValidationError::UnknownInitialChild {
+            state: node.name.clone(),
+            child: initial.clone(),
+        });
+    }
+    for child in &node.children {
+        validate_state_node(child)?;
+    }
+    Ok(())
+}
+
 pub struct Interpreter {
     machine: Machine,
     history: RefCell<HashMap<String, StateValue>>,
@@ -169,7 +185,29 @@ pub enum PersistError {
     HistoryTargetInvalid(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum MachineValidationError {
+    #[error("initial state '{0}' not found in machine states")]
+    UnknownInitialState(String),
+    #[error("compound state '{state}' declares unknown initial child '{child}'")]
+    UnknownInitialChild { state: String, child: String },
+}
+
 impl Interpreter {
+    /// Reject machines whose `initial` pointers reference unknown states so
+    /// boundaries can return typed errors instead of panicking later (#29).
+    pub fn validate_machine(machine: &Machine) -> Result<(), MachineValidationError> {
+        if !machine.states.iter().any(|s| s.name == machine.initial) {
+            return Err(MachineValidationError::UnknownInitialState(
+                machine.initial.clone(),
+            ));
+        }
+        for state in &machine.states {
+            validate_state_node(state)?;
+        }
+        Ok(())
+    }
+
     pub fn new(machine: Machine) -> Self {
         let interpreter = Interpreter {
             machine,
@@ -237,12 +275,11 @@ impl Interpreter {
 
     pub fn initial_state(&self) -> StateValue {
         let initial_name = &self.machine.initial;
-        let node = self.find_root_state(initial_name).unwrap_or_else(|| {
-            panic!(
-                "Initial state '{}' not found in machine states",
-                initial_name
-            )
-        });
+        // Robustness (#29): an unknown initial falls back to a degenerate
+        // atomic value instead of panicking; validate_machine() reports it.
+        let Some(node) = self.find_root_state(initial_name) else {
+            return StateValue::Atomic(initial_name.clone());
+        };
         let value = self.resolve_initial_value(node);
         if node.node_type == StateType::Parallel
             && let StateValue::Compound { child, .. } = value
@@ -583,7 +620,7 @@ impl Interpreter {
                     .get(&node.name)
                     .copied()
                     .unwrap_or(0);
-                if now < entered_at + delay_ms {
+                if now < entered_at.saturating_add(delay_ms) {
                     continue;
                 }
                 if let Some(ref guard) = transition.guard
@@ -1431,16 +1468,12 @@ impl Interpreter {
                 });
 
                 let result = if let Some(initial_name) = &node.initial {
-                    let child = node
-                        .children
-                        .iter()
-                        .find(|c| &c.name == initial_name)
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Initial child '{}' not found in compound state '{}'",
-                                initial_name, node.name
-                            )
-                        });
+                    // Robustness (#29): fall back like resolve_region_value
+                    // instead of panicking on a dangling initial pointer.
+                    let child = match node.children.iter().find(|c| &c.name == initial_name) {
+                        Some(child) => child,
+                        None => return StateValue::Atomic(node.name.clone()),
+                    };
                     StateValue::Compound {
                         state: node.name.clone(),
                         child: Box::new(self.resolve_initial_value(child)),
