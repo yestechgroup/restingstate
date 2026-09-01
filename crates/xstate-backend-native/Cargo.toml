@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = ["async"]
+async = ["xstate-core/async"]
+
 [dependencies]
-xstate-core = { path = "../xstate-core", features = ["async"] }
+xstate-core = { path = "../xstate-core", default-features = false }
 serde_json.workspace = true
