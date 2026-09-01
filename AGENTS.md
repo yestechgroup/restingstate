@@ -8,6 +8,7 @@ cargo clippy --all-targets --all-features -- -D warnings   # Lint
 cargo build --workspace      # Build all crates
 cargo test --workspace       # Run all unit tests
 cargo test --workspace -- --ignored  # Run compatibility harness (slow)
+cargo bench -p xstate-bench  # Run Criterion benchmarks
 ```
 
 ---
@@ -17,12 +18,15 @@ cargo test --workspace -- --ignored  # Run compatibility harness (slow)
 | Crate | Purpose | Depends On |
 |-------|---------|------------|
 | `xstate-ir` | Language-neutral XState intermediate representation | — |
-| `xstate-core` | Pure Rust runtime (Machine trait, Snapshot, StateValue, Interpreter) | `xstate-ir` |
+| `xstate-core` | Pure Rust runtime (Machine trait, Snapshot, StateValue, Interpreter, ActorLogic, backend traits) | `xstate-ir` |
 | `xstate-parser` | OXC-based TypeScript parser, extracts XState AST → IR | `xstate-ir` |
 | `xstate-codegen` | `quote`/`syn` Rust code generator (IR → Rust source) | `xstate-ir` |
 | `xstate-macro` | `#[xstate("path.ts")]` proc macro | `xstate-ir`, `xstate-parser`, `xstate-codegen` |
-| `xstate-napi` | Node.js native bindings + WASM target | `xstate-core` |
-| `xstate-actor` | Actor system (spawn, system, handles) | `xstate-core` |
+| `xstate-napi` | Node.js native bindings | `xstate-core` |
+| `xstate-actor` | Async actor system (Tokio, spawn, send_to, send_parent) | `xstate-core`, `tokio` |
+| `xstate-backend-native` | Single-threaded WASM-compatible actor system | `xstate-core` |
+| `xstate-wasm` | WASM bindings (JsMachine, JsActorSystem, JS guard/action callbacks) | `xstate-core`, `xstate-backend-native`, `wasm-bindgen` |
+| `xstate-bench` | Criterion benchmarks for Interpreter and NativeActorSystem | `xstate-core`, `xstate-backend-native`, `criterion` |
 
 ---
 
@@ -46,28 +50,28 @@ xstate-codegen         — Generate Rust enums, structs, match-based transition 
     ▼
 xstate-core            — Pure Rust runtime (no TS/JS dependency)
     │
-    ├── native
-    ├── WASM
-    └── NAPI-RS
+    ├── native (xstate-actor, Tokio-based)
+    ├── WASM (xstate-backend-native, synchronous)
+    └── NAPI-RS (xstate-napi)
 ```
 
 ---
 
 ## Code Conventions
 
-- **Edition 2021**, `resolver = "2"`, `workspace.package` for shared version/license
+- **Edition 2024**, `resolver = "2"`, `workspace.package` for shared version/license
 - Use `workspace.dependencies` for all external crates, local crates use `path = "../…"`
 - All public types derive `Debug, Clone, PartialEq, Eq`, and `Serialize, Deserialize` where applicable
 - Error types use `thiserror`
 - Generated code uses `quote` + `syn`; golden-file tests assert exact output
 - Runtime traits: `Machine` has associated types `State`, `Event`, `Context`
 - Actions and guards are trait-based boundaries — the generated code stores identifiers, the application supplies implementation
-- Generated code uses `quote` + `syn`; golden-file tests assert exact output
 - All IR types are tested with round-trip JSON serialization (`serde_json`)
+- WASM builds use `--no-default-features` to exclude tokio
 
 ---
 
-### Supported XState Constructs (Phase 3)
+### Supported XState Constructs
 
 - `createMachine({...})` top-level call
 - `id`, `initial`, `context`, `states`
@@ -77,24 +81,31 @@ xstate-core            — Pure Rust runtime (no TS/JS dependency)
 - Transition actions
 - `type` for state types (compound, parallel, final, history)
 - `initial` for compound state children
-- `setup({}).createMachine({})` chained calls
+- `setup({ actors, guards, actions, delays }).createMachine({})` chained calls
 - `tags` and `description` metadata
 - `xstate!("path/to/machine.ts")` proc macro invocation
 - Multi-target transitions (cross-compound `#path` absolute targets)
 - `assign` built-in action support
+- `invoke` with `src`, `id`, `onDone`, `onError`
+- `fromPromise`, `fromCallback`, `fromActorLogic`, `fromMachine` actor definitions
 
 ---
 
 ## IR Schema Reference
 
-- **Machine**: `id` (String), `initial` (String state name), `context` (ContextSchema), `states` (Vec\<StateNode\>)
+- **Machine**: `id` (String), `initial` (String state name), `context` (ContextSchema), `states` (Vec\<StateNode\>), `setup` (Option\<SetupConfig\>)
+- **SetupConfig**: `actors` (HashMap\<String, ActorDef\>), `guards` (HashMap\<String, GuardDef\>), `actions` (HashMap\<String, ActionDef\>), `delays` (HashMap\<String, u64\>)
+- **ActorDef**: `FromActorLogic { src }`, `FromPromise { src }`, `FromCallback { src }`, `FromMachine { machine_id }`
+- **GuardDef**: `name` (String), `params` (Vec\<GuardParam\>)
+- **ActionDef**: `name` (String), `params` (Vec\<serde_json::Value\>)
 - **ContextSchema**: `fields` (Vec\<ContextField\>)
 - **ContextField**: `name` (String), `type_name` (String), `default_value` (serde_json::Value)
-- **StateNode**: `name`, `description` (optional), `initial` (optional child initial state), `entry`/`exit` (Vec\<String\> action names), `transitions` (Vec\<Transition\>), `children` (Vec\<StateNode\>), `node_type` (StateType enum), `tags` (Vec\<String\>)
+- **StateNode**: `name`, `description` (optional), `initial` (optional child initial state), `entry`/`exit` (Vec\<String\> action names), `transitions` (Vec\<Transition\>), `children` (Vec\<StateNode\>), `node_type` (StateType enum), `tags` (Vec\<String\>), `invoke` (Option\<InvokeConfig\>), `on_done` (Vec\<Transition\>), `output` (Option\<Value\>)
 - **StateType enum**: `Atomic` (default), `Compound`, `Parallel`, `Final`, `History`, `DeepHistory`
-- **Transition**: `event` (String), `target` (Option\<String\>), `guard` (Option\<Guard\>), `actions` (Vec\<Action\>), `description` (optional)
+- **Transition**: `event` (String), `target` (Option\<String\>), `guard` (Option\<Guard\>), `actions` (Vec\<Action\>), `description` (optional), `delay_ms` (Option\<u64\>), `targets` (Vec\<String\>)
 - **Guard**: `name` (String) — the identifier of a guard function
 - **Action**: `name` (String), `args` (Vec\<serde_json::Value\>)
+- **InvokeConfig**: `src` (String), `id` (Option\<String\>), `on_done` (Vec\<Transition\>), `on_error` (Vec\<Transition\>)
 
 ---
 
@@ -115,6 +126,110 @@ The `xstate-parser` walks the OXC AST to extract `createMachine({...})` calls:
 | `{ initial: 'childState' }` | `Option<String>` | Optional child initial |
 | `{ context: { field: val } }` | `ContextSchema` | Context field definitions |
 | `{ tags: ['tag1'] }` | `Vec<String>` | State tags |
+| `setup({ actors: { ... } })` | `SetupConfig.actors` | Actor definitions |
+| `setup({ guards: { ... } })` | `SetupConfig.guards` | Guard definitions |
+| `setup({ actions: { ... } })` | `SetupConfig.actions` | Action definitions |
+| `invoke: { src, id, onDone, onError }` | `InvokeConfig` | Actor invocation |
+
+---
+
+## Actor System
+
+### ActorLogic Trait
+
+The `ActorLogic` trait defines how an actor processes events:
+
+```rust
+pub trait ActorLogic: Send + Sync {
+    fn name(&self) -> &str;
+    fn initial_snapshot(&self) -> serde_json::Value;
+    fn receive(&mut self, event: serde_json::Value, snapshot: &mut serde_json::Value) -> Vec<serde_json::Value>;
+    fn stop(&mut self) -> Option<serde_json::Value> { None }
+}
+```
+
+Implementations: `MachineLogic` (wraps Interpreter), `ReducerLogic` (pure reducer), `CallbackLogic` (long-running callback), `PromiseLogic` (one-shot async).
+
+### Backend Traits
+
+Two backend-agnostic traits in `xstate-core::backend`:
+
+- `ActorSystem` — spawn, send_to, stop, snapshot, status, len, is_empty
+- `ActorHandle` — send, stop, snapshot, status
+
+### Backend Implementations
+
+| Backend | Crate | Async? | Target |
+|---------|-------|--------|--------|
+| Tokio (default) | `xstate-actor` | Yes | Native server |
+| Native (WASM) | `xstate-backend-native` | No | Browser, WASM |
+
+### Guard/Action Registries
+
+- `GuardRegistry` — named guards with `and()`, `or()`, `not()` combinators
+- `ActionRegistry` — named actions with `sequence()`, `parallel()`, `assign_action()` combinators
+
+---
+
+## WASM Support
+
+### Building
+
+```bash
+# Build WASM package
+cd crates/xstate-wasm && ./build.sh
+
+# Or manually
+cargo build -p xstate-wasm --target wasm32-unknown-unknown --release
+wasm-pack build crates/xstate-wasm --target web
+```
+
+### JavaScript API
+
+```javascript
+import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from '@restingstate/wasm';
+await init();
+
+// Single machine
+const machine = new JsMachine(JSON.stringify(machineIr));
+machine.send(JSON.stringify({ type: 'TOGGLE' }));
+console.log(JSON.parse(machine.snapshot()));
+
+// Actor system
+const system = new JsActorSystem();
+system.spawn("worker", JSON.stringify(workerIr));
+system.sendTo("worker", JSON.stringify({ type: "PROCESS" }));
+
+// JS guard/action callbacks
+registerGuard("isValid", (ctx, event) => ctx.count > 0);
+registerAction("log", (args, event) => console.log(event.type));
+```
+
+---
+
+## Benchmarks
+
+### Rust-native (Criterion)
+
+```bash
+cargo bench -p xstate-bench --bench interpreter    # Interpreter benchmarks
+cargo bench -p xstate-bench --bench actor_system   # Actor system benchmarks
+```
+
+### WASM vs xstate.js
+
+```bash
+cd benchmarks
+node run-benchmarks.mjs                           # All workloads
+node run-benchmarks.mjs workloads/toggle.json      # Single workload
+```
+
+### Workloads
+
+| Category | Workloads |
+|----------|-----------|
+| FSM | toggle, traffic-light, auth, counter, entry-exit, form, stopwatch, timer, word |
+| Actor | actor-spawn, actor-ping-pong, actor-reducer, actor-broadcast, actor-tree |
 
 ---
 
@@ -149,9 +264,10 @@ The `xstate-parser` walks the OXC AST to extract `createMachine({...})` calls:
 | Spawned actors | ✓ | 0.3 |
 | Actor systems | ✓ | 0.3 |
 | Persistence (serialize/restore) | ✓ | 0.2 |
+| setup({ actors, guards, actions }) | ✓ | 0.3 |
 | **TOTAL (0.1 targets)** | **10/10** | **0.1** |
 | **TOTAL (0.2 targets)** | **5/5** | **0.2** |
-| **TOTAL (0.3 targets)** | **2/2** | **0.3** |
+| **TOTAL (0.3 targets)** | **3/3** | **0.3** |
 
 ---
 
@@ -235,7 +351,7 @@ Usage:
 # Generate xstate.js snapshots
 node tests/compatibility/ts-runner.mjs tests/compatibility/machines/simple/toggle.json > js-out.json
 
-# Generate Rust snapshots  
+# Generate Rust snapshots
 cargo run -p rust-runner -- tests/compatibility/machines/simple/toggle.json > rs-out.json
 
 # Compare
@@ -261,10 +377,13 @@ The xstate.js source is vendored as a git submodule at `tests/compatibility/xsta
 The `xstate-codegen` crate takes an `xstate_ir::Machine` and generates a Rust module containing:
 
 1. **State enum** — one variant per state node (PascalCase)
-2. **Event enum** — one variant per unique event name (PascalCase)  
+2. **Event enum** — one variant per unique event name (PascalCase)
 3. **Context struct** — typed fields from ContextSchema
 4. **Machine struct** — empty unit struct
 5. **impl Machine** — trait impl with match-based transition function
+6. **Guard module** — placeholder functions (when setup has guards)
+7. **Action module** — placeholder functions (when setup has actions)
+8. **Actor module** — placeholder factory functions (when setup has actors)
 
 ### Example: Toggle Machine
 
@@ -284,7 +403,7 @@ impl Machine for MachineImpl {
     type State = State;
     type Event = Event;
     type Context = Context;
-    
+
     fn transition(&self, state: &State, event: &Event, _context: &mut Context) -> State {
         match (state, event) {
             (State::Inactive, Event::Toggle) => State::Active,
@@ -311,7 +430,7 @@ xstate!("machines/payment.ts");
 
 // This generates:
 // - pub enum State { ... }        // All state variants
-// - pub enum Event { ... }        // All event variants  
+// - pub enum Event { ... }        // All event variants
 // - pub struct Context { ... }    // Typed context fields
 // - pub struct MachineImpl;       // Unit struct
 // - impl Machine for MachineImpl; // Full trait implementation
@@ -348,22 +467,12 @@ machine.send({ type: 'TOGGLE' });    // Returns new snapshot or null
 | `.snapshot()` | — | `{ value, context }` |
 | `.send(event)` | `{ type: string }` | `{ value, context }` or null |
 
-### WASM Target
-
-The same crate supports a `wasm32-unknown-unknown` build target for WebAssembly deployment:
-
-```bash
-cargo build -p xstate-napi --target wasm32-unknown-unknown
-```
-
-This enables running XState machines in the browser via WASM, with JSON serialization for state transfer.
-
 ---
 
 ## Project Status
 
-All 7 planned phases complete. 92 tests pass. 25 hand-crafted compatibility vectors (13 categories) + 34 extracted vectors.
+All planned phases complete. 205+ tests pass. 25 hand-crafted compatibility vectors (13 categories) + 34 extracted vectors. Actor system with dual backends (Tokio + WASM). WASM browser support with full JS API.
 
 ---
 
-*Last updated: Phase 0.3 (all targets complete: Spawned actors + Actor systems)*
+*Last updated: Phase 1.6 (Actor benchmarks + WASM support)*

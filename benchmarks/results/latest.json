@@ -1,133 +1,38 @@
 {
   "system": {
-    "os": "Linux 7.0.0-22-generic",
+    "os": "Linux 7.0.0-29-generic",
     "cpu": "Intel(R) Xeon(R) Gold 6140 CPU @ 2.30GHz",
     "node": "v22.22.1",
     "wasm": "direct (wasm-bindgen, in-process)",
-    "timestamp": "2026-08-09T07:52:58.782Z",
+    "timestamp": "2026-09-01T07:44:14.075Z",
     "warmup_events": 1000,
     "measured_events": 100000,
     "trials": 5
   },
   "results": [
     {
-      "workload": "auth",
+      "workload": "actor-broadcast",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
       "warmup_events": 1000,
       "measured_events": 100000,
       "trials": 5,
       "xstate_js": {
         "startup_ms": {
-          "mean": 1.6364325999999607,
-          "min": 0.30780000000004293,
-          "max": 5.134223999999989
+          "mean": 3.0592108000000224,
+          "min": 0.36228700000003755,
+          "max": 13.140274000000005
         },
         "total_ms": {
-          "mean": 541.7857766000001,
-          "min": 515.5883900000001,
-          "max": 585.4640569999999
+          "mean": 194.62539320000002,
+          "min": 180.950781,
+          "max": 209.54967900000003
         },
         "throughput_eps": {
-          "mean": 185038.6,
-          "min": 170805,
-          "max": 193953
-        },
-        "snapshot_bytes": {
-          "mean": 109
-        },
-        "trials": 5
-      },
-      "xstate_wasm": {
-        "startup_ms": {
-          "mean": 0.7660581999999522,
-          "min": 0.03495599999996557,
-          "max": 3.642186000000038
-        },
-        "total_ms": {
-          "mean": 361.82002159999985,
-          "min": 347.9817390000003,
-          "max": 375.65712099999973
-        },
-        "throughput_eps": {
-          "mean": 276552.2,
-          "min": 266200,
-          "max": 287371
-        },
-        "snapshot_bytes": {
-          "mean": 49
-        },
-        "trials": 5
-      },
-      "speedup": 1.4945649178063387
-    },
-    {
-      "workload": "counter",
-      "warmup_events": 1000,
-      "measured_events": 100000,
-      "trials": 5,
-      "xstate_js": {
-        "startup_ms": {
-          "mean": 0.5087541999997484,
-          "min": 0.16579599999931816,
-          "max": 1.366277000000082
-        },
-        "total_ms": {
-          "mean": 240.17950860000002,
-          "min": 221.2464399999999,
-          "max": 285.55514200000016
-        },
-        "throughput_eps": {
-          "mean": 419903.2,
-          "min": 350195,
-          "max": 451985
-        },
-        "snapshot_bytes": {
-          "mean": 94
-        },
-        "trials": 5
-      },
-      "xstate_wasm": {
-        "startup_ms": {
-          "mean": 0.14970519999988027,
-          "min": 0.04217700000026525,
-          "max": 0.5174909999996089
-        },
-        "total_ms": {
-          "mean": 294.1315696000003,
-          "min": 289.3856830000004,
-          "max": 303.49175000000014
-        },
-        "throughput_eps": {
-          "mean": 340118.2,
-          "min": 329498,
-          "max": 345560
-        },
-        "snapshot_bytes": {
-          "mean": 52
-        },
-        "trials": 5
-      },
-      "speedup": 0.8099919219477251
-    },
-    {
-      "workload": "entry-exit",
-      "warmup_events": 1000,
-      "measured_events": 100000,
-      "trials": 5,
-      "xstate_js": {
-        "startup_ms": {
-          "mean": 0.22339739999988523,
-          "min": 0.16565499999978783,
-          "max": 0.38980699999956414
-        },
-        "total_ms": {
-          "mean": 126.38799419999995,
-          "min": 121.4146380000002,
-          "max": 133.7804670000005
-        },
-        "throughput_eps": {
-          "mean": 792063.4,
-          "min": 747493,
-          "max": 823624
+          "mean": 515983.2,
+          "min": 477214,
+          "max": 552636
         },
         "snapshot_bytes": {
           "mean": 91
@@ -136,194 +41,50 @@
       },
       "xstate_wasm": {
         "startup_ms": {
-          "mean": 0.07316480000044975,
-          "min": 0.025600000000849832,
-          "max": 0.2352150000006077
+          "mean": 0.5373778000000129,
+          "min": 0.027669999999943684,
+          "max": 2.55045599999994
         },
         "total_ms": {
-          "mean": 102.58151159999997,
-          "min": 98.46157000000039,
-          "max": 107.51023299999906
+          "mean": 155.16874579999998,
+          "min": 149.95446700000002,
+          "max": 166.82278999999994
         },
         "throughput_eps": {
-          "mean": 976168.8,
-          "min": 930144,
-          "max": 1015625
+          "mean": 645410.4,
+          "min": 599438,
+          "max": 666869
         },
         "snapshot_bytes": {
           "mean": 31
         },
         "trials": 5
       },
-      "speedup": 1.232437706375525
+      "speedup": 1.2508360737326332
     },
     {
-      "workload": "form",
+      "workload": "actor-ping-pong",
+      "is_actor": true,
+      "actor_count": 1,
+      "avg_actors_spawned": 1,
       "warmup_events": 1000,
       "measured_events": 100000,
       "trials": 5,
       "xstate_js": {
         "startup_ms": {
-          "mean": 0.20678840000000492,
-          "min": 0.11323199999969802,
-          "max": 0.33282599999984086
+          "mean": 0.3672066000000541,
+          "min": 0.1918839999998454,
+          "max": 0.7233969999999772
         },
         "total_ms": {
-          "mean": 5.8073190000002795,
-          "min": 4.988591000001179,
-          "max": 8.414553000000524
+          "mean": 143.54547999999994,
+          "min": 131.4968170000002,
+          "max": 154.01321099999996
         },
         "throughput_eps": {
-          "mean": 17917693,
-          "min": 11884173,
-          "max": 20045740
-        },
-        "snapshot_bytes": {
-          "mean": 92
-        },
-        "trials": 5
-      },
-      "xstate_wasm": {
-        "startup_ms": {
-          "mean": 0.037394399999902815,
-          "min": 0.03015600000071572,
-          "max": 0.04874699999891163
-        },
-        "total_ms": {
-          "mean": 104.05116100000014,
-          "min": 101.528053,
-          "max": 106.93253499999992
-        },
-        "throughput_eps": {
-          "mean": 961579.4,
-          "min": 935169,
-          "max": 984949
-        },
-        "snapshot_bytes": {
-          "mean": 34
-        },
-        "trials": 5
-      },
-      "speedup": 0.05366647369167448
-    },
-    {
-      "workload": "stopwatch",
-      "warmup_events": 1000,
-      "measured_events": 100000,
-      "trials": 5,
-      "xstate_js": {
-        "startup_ms": {
-          "mean": 0.24324260000066716,
-          "min": 0.18781400000079884,
-          "max": 0.40486799999962386
-        },
-        "total_ms": {
-          "mean": 715.9933268000001,
-          "min": 685.9068120000011,
-          "max": 800.0349609999994
-        },
-        "throughput_eps": {
-          "mean": 140117.4,
-          "min": 124995,
-          "max": 145792
-        },
-        "snapshot_bytes": {
-          "mean": 170
-        },
-        "trials": 5
-      },
-      "xstate_wasm": {
-        "startup_ms": {
-          "mean": 0.1290584000002127,
-          "min": 0.033348999999361695,
-          "max": 0.45945899999969697
-        },
-        "total_ms": {
-          "mean": 256.06493999999947,
-          "min": 251.13264499999968,
-          "max": 266.4998940000005
-        },
-        "throughput_eps": {
-          "mean": 390741.6,
-          "min": 375235,
-          "max": 398196
-        },
-        "snapshot_bytes": {
-          "mean": 55
-        },
-        "trials": 5
-      },
-      "speedup": 2.7886729271311057
-    },
-    {
-      "workload": "timer",
-      "warmup_events": 1000,
-      "measured_events": 100000,
-      "trials": 5,
-      "xstate_js": {
-        "startup_ms": {
-          "mean": 0.2223805999994511,
-          "min": 0.18388299999969604,
-          "max": 0.3524939999988419
-        },
-        "total_ms": {
-          "mean": 188.84120699999949,
-          "min": 184.41331799999898,
-          "max": 193.2142279999989
-        },
-        "throughput_eps": {
-          "mean": 529681.2,
-          "min": 517560,
-          "max": 542260
-        },
-        "snapshot_bytes": {
-          "mean": 103
-        },
-        "trials": 5
-      },
-      "xstate_wasm": {
-        "startup_ms": {
-          "mean": 0.04600639999989653,
-          "min": 0.03510599999935948,
-          "max": 0.05494100000032631
-        },
-        "total_ms": {
-          "mean": 238.44708340000034,
-          "min": 231.00590899999952,
-          "max": 247.21716899999956
-        },
-        "throughput_eps": {
-          "mean": 419659.4,
-          "min": 404503,
-          "max": 432889
-        },
-        "snapshot_bytes": {
-          "mean": 43
-        },
-        "trials": 5
-      },
-      "speedup": 0.7922867566377664
-    },
-    {
-      "workload": "toggle",
-      "warmup_events": 1000,
-      "measured_events": 100000,
-      "trials": 5,
-      "xstate_js": {
-        "startup_ms": {
-          "mean": 0.14945579999985056,
-          "min": 0.1316370000022289,
-          "max": 0.17349000000103842
-        },
-        "total_ms": {
-          "mean": 460.0135057999996,
-          "min": 452.2754550000009,
-          "max": 473.6484189999974
-        },
-        "throughput_eps": {
-          "mean": 217439,
-          "min": 211127,
-          "max": 221104
+          "mean": 698824.4,
+          "min": 649295,
+          "max": 760475
         },
         "snapshot_bytes": {
           "mean": 93
@@ -332,47 +93,570 @@
       },
       "xstate_wasm": {
         "startup_ms": {
-          "mean": 0.05587359999917681,
-          "min": 0.030819999999948777,
-          "max": 0.13089499999841792
+          "mean": 0.180926399999953,
+          "min": 0.043427000000065163,
+          "max": 0.5184110000000146
         },
         "total_ms": {
-          "mean": 259.0281420000007,
-          "min": 253.12488700000176,
-          "max": 272.1667750000015
+          "mean": 92.51302159999986,
+          "min": 88.09682099999964,
+          "max": 98.74571900000001
         },
         "throughput_eps": {
-          "mean": 386329.2,
-          "min": 367422,
-          "max": 395062
+          "mean": 1082573.4,
+          "min": 1012702,
+          "max": 1135115
+        },
+        "snapshot_bytes": {
+          "mean": 32
+        },
+        "trials": 5
+      },
+      "speedup": 1.549135090303086
+    },
+    {
+      "workload": "actor-reducer",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.16783459999996922,
+          "min": 0.12144600000010541,
+          "max": 0.29023099999994884
+        },
+        "total_ms": {
+          "mean": 252.4056989999999,
+          "min": 244.53602499999943,
+          "max": 261.6600620000004
+        },
+        "throughput_eps": {
+          "mean": 396390.8,
+          "min": 382175,
+          "max": 408938
+        },
+        "snapshot_bytes": {
+          "mean": 100
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.14609640000016952,
+          "min": 0.029354000000239466,
+          "max": 0.5818720000006579
+        },
+        "total_ms": {
+          "mean": 232.4000156000002,
+          "min": 221.8141310000001,
+          "max": 246.07974600000034
+        },
+        "throughput_eps": {
+          "mean": 430911.4,
+          "min": 406372,
+          "max": 450828
+        },
+        "snapshot_bytes": {
+          "mean": 40
+        },
+        "trials": 5
+      },
+      "speedup": 1.0870872886050837
+    },
+    {
+      "workload": "actor-spawn",
+      "is_actor": true,
+      "actor_count": 1,
+      "avg_actors_spawned": 1,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.142141200000151,
+          "min": 0.12477699999999459,
+          "max": 0.1577820000002248
+        },
+        "total_ms": {
+          "mean": 136.16339720000033,
+          "min": 132.5569290000003,
+          "max": 145.21816900000067
+        },
+        "throughput_eps": {
+          "mean": 735244.4,
+          "min": 688619,
+          "max": 754393
+        },
+        "snapshot_bytes": {
+          "mean": 92
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.04031300000006013,
+          "min": 0.03174200000012206,
+          "max": 0.046314000000165834
+        },
+        "total_ms": {
+          "mean": 94.510059,
+          "min": 89.4798350000001,
+          "max": 102.29260199999953
+        },
+        "throughput_eps": {
+          "mean": 1060432.4,
+          "min": 977588,
+          "max": 1117570
+        },
+        "snapshot_bytes": {
+          "mean": 31
+        },
+        "trials": 5
+      },
+      "speedup": 1.4422855855821546
+    },
+    {
+      "workload": "actor-tree",
+      "is_actor": true,
+      "actor_count": 2,
+      "avg_actors_spawned": 0,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.5162599999999656,
+          "min": 0.25588799999968614,
+          "max": 1.4765600000000632
+        },
+        "total_ms": {
+          "mean": 10.400361200000043,
+          "min": 4.581059000000096,
+          "max": 15.372481000000334
+        },
+        "throughput_eps": {
+          "mean": 12782853.6,
+          "min": 6505131,
+          "max": 21829014
+        },
+        "snapshot_bytes": {
+          "mean": 170
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.03008979999995063,
+          "min": 0.028330000000096334,
+          "max": 0.03114999999979773
+        },
+        "total_ms": {
+          "mean": 86.73338339999991,
+          "min": 85.00580699999955,
+          "max": 89.8756199999998
+        },
+        "throughput_eps": {
+          "mean": 1153378,
+          "min": 1112649,
+          "max": 1176390
+        },
+        "snapshot_bytes": {
+          "mean": 31
+        },
+        "trials": 5
+      },
+      "speedup": 0.09022852299583561
+    },
+    {
+      "workload": "auth",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.2713635999996768,
+          "min": 0.1535699999985809,
+          "max": 0.4800889999996798
+        },
+        "total_ms": {
+          "mean": 550.9470204000003,
+          "min": 535.7601470000009,
+          "max": 572.6686719999998
+        },
+        "throughput_eps": {
+          "mean": 181607.4,
+          "min": 174621,
+          "max": 186651
+        },
+        "snapshot_bytes": {
+          "mean": 109
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.09587540000029549,
+          "min": 0.0276400000002468,
+          "max": 0.3275809999995545
+        },
+        "total_ms": {
+          "mean": 315.1845736000003,
+          "min": 301.714727999999,
+          "max": 342.037518000001
+        },
+        "throughput_eps": {
+          "mean": 318012.4,
+          "min": 292366,
+          "max": 331439
+        },
+        "snapshot_bytes": {
+          "mean": 49
+        },
+        "trials": 5
+      },
+      "speedup": 1.7510982481991375
+    },
+    {
+      "workload": "counter",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.140354600000137,
+          "min": 0.08604899999954796,
+          "max": 0.30763699999988603
+        },
+        "total_ms": {
+          "mean": 249.15039759999962,
+          "min": 240.3530009999995,
+          "max": 268.10166200000094
+        },
+        "throughput_eps": {
+          "mean": 401997.4,
+          "min": 372993,
+          "max": 416055
+        },
+        "snapshot_bytes": {
+          "mean": 94
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.031012200000259327,
+          "min": 0.018989000000146916,
+          "max": 0.0479059999997844
+        },
+        "total_ms": {
+          "mean": 243.7118607999997,
+          "min": 237.14227199999914,
+          "max": 260.9282409999996
+        },
+        "throughput_eps": {
+          "mean": 410839.2,
+          "min": 383247,
+          "max": 421688
+        },
+        "snapshot_bytes": {
+          "mean": 52
+        },
+        "trials": 5
+      },
+      "speedup": 1.0219946696172661
+    },
+    {
+      "workload": "entry-exit",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.17798920000022916,
+          "min": 0.12991799999872455,
+          "max": 0.29045399999995425
+        },
+        "total_ms": {
+          "mean": 125.99558879999968,
+          "min": 123.65123399999902,
+          "max": 130.0010199999997
+        },
+        "throughput_eps": {
+          "mean": 793914.8,
+          "min": 769225,
+          "max": 808726
+        },
+        "snapshot_bytes": {
+          "mean": 91
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.057132600000477395,
+          "min": 0.027877999998963787,
+          "max": 0.15749900000082562
+        },
+        "total_ms": {
+          "mean": 92.17285759999977,
+          "min": 89.168275,
+          "max": 98.76077499999883
+        },
+        "throughput_eps": {
+          "mean": 1086490,
+          "min": 1012548,
+          "max": 1121475
+        },
+        "snapshot_bytes": {
+          "mean": 31
+        },
+        "trials": 5
+      },
+      "speedup": 1.368522163839243
+    },
+    {
+      "workload": "form",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.15245780000004744,
+          "min": 0.10026199999992969,
+          "max": 0.28293399999893154
+        },
+        "total_ms": {
+          "mean": 2.269842199999766,
+          "min": 2.0239939999992203,
+          "max": 2.621433000000252
+        },
+        "throughput_eps": {
+          "mean": 44598726.8,
+          "min": 38147075,
+          "max": 49407261
+        },
+        "snapshot_bytes": {
+          "mean": 92
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.027539999999498833,
+          "min": 0.023944999999002903,
+          "max": 0.03361599999880127
+        },
+        "total_ms": {
+          "mean": 92.38358360000021,
+          "min": 90.09572200000002,
+          "max": 95.01811300000008
+        },
+        "throughput_eps": {
+          "mean": 1082882.4,
+          "min": 1052431,
+          "max": 1109931
+        },
+        "snapshot_bytes": {
+          "mean": 34
+        },
+        "trials": 5
+      },
+      "speedup": 0.024280567578893304
+    },
+    {
+      "workload": "stopwatch",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.18964339999874938,
+          "min": 0.1699430000007851,
+          "max": 0.24762099999861675
+        },
+        "total_ms": {
+          "mean": 723.6586962000008,
+          "min": 686.0832349999982,
+          "max": 808.6850990000021
+        },
+        "throughput_eps": {
+          "mean": 138740.2,
+          "min": 123658,
+          "max": 145755
+        },
+        "snapshot_bytes": {
+          "mean": 170
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.035076799998932984,
+          "min": 0.028403000000253087,
+          "max": 0.054228999997576466
+        },
+        "total_ms": {
+          "mean": 218.3000310000003,
+          "min": 213.2288320000007,
+          "max": 226.31850400000258
+        },
+        "throughput_eps": {
+          "mean": 458413.4,
+          "min": 441855,
+          "max": 468980
+        },
+        "snapshot_bytes": {
+          "mean": 55
+        },
+        "trials": 5
+      },
+      "speedup": 3.3041137319969267
+    },
+    {
+      "workload": "timer",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.18410820000062814,
+          "min": 0.1486880000011297,
+          "max": 0.3062339999996766
+        },
+        "total_ms": {
+          "mean": 186.40845760000084,
+          "min": 180.80137300000206,
+          "max": 201.7906890000013
+        },
+        "throughput_eps": {
+          "mean": 537404.2,
+          "min": 495563,
+          "max": 553093
+        },
+        "snapshot_bytes": {
+          "mean": 103
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.04608660000085365,
+          "min": 0.03752399999939371,
+          "max": 0.06401399999958812
+        },
+        "total_ms": {
+          "mean": 204.4776179999986,
+          "min": 197.52465999999913,
+          "max": 211.34903399999894
+        },
+        "throughput_eps": {
+          "mean": 489360.8,
+          "min": 473151,
+          "max": 506266
+        },
+        "snapshot_bytes": {
+          "mean": 43
+        },
+        "trials": 5
+      },
+      "speedup": 0.9106009964194549
+    },
+    {
+      "workload": "toggle",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
+      "warmup_events": 1000,
+      "measured_events": 100000,
+      "trials": 5,
+      "xstate_js": {
+        "startup_ms": {
+          "mean": 0.17605600000097182,
+          "min": 0.12511000000085915,
+          "max": 0.30274200000349083
+        },
+        "total_ms": {
+          "mean": 486.69319420000176,
+          "min": 473.3634990000028,
+          "max": 507.4561140000005
+        },
+        "throughput_eps": {
+          "mean": 205582.6,
+          "min": 197061,
+          "max": 211254
+        },
+        "snapshot_bytes": {
+          "mean": 93
+        },
+        "trials": 5
+      },
+      "xstate_wasm": {
+        "startup_ms": {
+          "mean": 0.04729159999988042,
+          "min": 0.026960999999573687,
+          "max": 0.12320900000122492
+        },
+        "total_ms": {
+          "mean": 236.44581900000048,
+          "min": 224.88611400000082,
+          "max": 251.41325099999813
+        },
+        "throughput_eps": {
+          "mean": 423617.8,
+          "min": 397752,
+          "max": 444670
         },
         "snapshot_bytes": {
           "mean": 33
         },
         "trials": 5
       },
-      "speedup": 1.7767245066432424
+      "speedup": 2.0605722468730328
     },
     {
       "workload": "traffic-light",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
       "warmup_events": 1000,
       "measured_events": 100000,
       "trials": 5,
       "xstate_js": {
         "startup_ms": {
-          "mean": 0.18675359999979263,
-          "min": 0.14358200000060606,
-          "max": 0.31878800000049523
+          "mean": 0.1491020000001299,
+          "min": 0.13538899999912246,
+          "max": 0.16853400000036345
         },
         "total_ms": {
-          "mean": 470.2333606,
-          "min": 454.1293289999994,
-          "max": 483.205371
+          "mean": 495.95122259999914,
+          "min": 476.07274699999834,
+          "max": 522.1676829999997
         },
         "throughput_eps": {
-          "mean": 212746.4,
-          "min": 206951,
-          "max": 220202
+          "mean": 201842.2,
+          "min": 191509,
+          "max": 210052
         },
         "snapshot_bytes": {
           "mean": 88
@@ -381,47 +665,50 @@
       },
       "xstate_wasm": {
         "startup_ms": {
-          "mean": 0.034631000000081257,
-          "min": 0.028882999999041203,
-          "max": 0.039276999999856343
+          "mean": 0.03028059999924153,
+          "min": 0.023517999998148298,
+          "max": 0.036815999999816995
         },
         "total_ms": {
-          "mean": 252.20832979999977,
-          "min": 246.08290800000032,
-          "max": 258.6359569999986
+          "mean": 224.1209431999996,
+          "min": 217.07020199999897,
+          "max": 232.8583409999992
         },
         "throughput_eps": {
-          "mean": 396620.6,
-          "min": 386644,
-          "max": 406367
+          "mean": 446431.8,
+          "min": 429446,
+          "max": 460680
         },
         "snapshot_bytes": {
           "mean": 31
         },
         "trials": 5
       },
-      "speedup": 1.864288185369999
+      "speedup": 2.2117862369712578
     },
     {
       "workload": "word",
+      "is_actor": false,
+      "actor_count": 0,
+      "avg_actors_spawned": null,
       "warmup_events": 1000,
       "measured_events": 100000,
       "trials": 5,
       "xstate_js": {
         "startup_ms": {
-          "mean": 0.4637252000000444,
-          "min": 0.25413900000057765,
-          "max": 0.9361540000027162
+          "mean": 0.4117415999986406,
+          "min": 0.2824719999989611,
+          "max": 0.8515999999981432
         },
         "total_ms": {
-          "mean": 1140.2336578000002,
-          "min": 1134.663182999997,
-          "max": 1144.6417580000016
+          "mean": 1381.1402339999986,
+          "min": 1194.6960499999986,
+          "max": 1438.3045829999974
         },
         "throughput_eps": {
-          "mean": 87702.4,
-          "min": 87364,
-          "max": 88132
+          "mean": 72774.6,
+          "min": 69526,
+          "max": 83703
         },
         "snapshot_bytes": {
           "mean": 148
@@ -430,26 +717,26 @@
       },
       "xstate_wasm": {
         "startup_ms": {
-          "mean": 0.10589160000017728,
-          "min": 0.050998999999137595,
-          "max": 0.2631519999995362
+          "mean": 0.09673600000096486,
+          "min": 0.04743199999938952,
+          "max": 0.22921299999870826
         },
         "total_ms": {
-          "mean": 510.3848296000004,
-          "min": 489.49705200000244,
-          "max": 529.6765070000001
+          "mean": 557.7342707999996,
+          "min": 541.4055019999942,
+          "max": 578.380164000002
         },
         "throughput_eps": {
-          "mean": 196115.2,
-          "min": 188794,
-          "max": 204291
+          "mean": 179416.6,
+          "min": 172897,
+          "max": 184704
         },
         "snapshot_bytes": {
           "mean": 85
         },
         "trials": 5
       },
-      "speedup": 2.2361440507899446
+      "speedup": 2.465373907929415
     }
   ]
 }

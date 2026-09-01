@@ -2,7 +2,7 @@
 
 | Status | Crate | Crate |
 |--------|-------|-------|
-| 128 tests pass | 25 hand-crafted + 36 extracted compatibility vectors | `.ts` → parser → IR → codegen → native / WASM / NAPI |
+| 205 tests pass | 25 hand-crafted + 34 extracted compatibility vectors | `.ts` → parser → IR → codegen → native / WASM / NAPI |
 
 ## 1. Project Overview
 
@@ -44,35 +44,39 @@ xstate-codegen         — Generate Rust enums, structs, match-based transition 
     ▼
 xstate-core            — Pure Rust runtime (no TS/JS dependency)
     │
-    ├── native
-    ├── WASM
-    └── NAPI-RS
+    ├── native (xstate-actor, Tokio-based)
+    ├── WASM (xstate-backend-native, synchronous)
+    └── NAPI-RS (xstate-napi)
 ```
 
 ### Crate Layout
 
 ```
 crates/
-├── xstate-ir/          # Language-neutral IR (serde)
-├── xstate-core/        # Runtime (Machine trait, Interpreter, StateValue)
-├── xstate-parser/      # OXC-based TS parser
-├── xstate-codegen/     # IR → Rust source (quote/syn)
-├── xstate-macro/       # #[xstate("path.ts")] proc macro
-├── xstate-napi/        # Node.js bindings (NAPI-RS)
-├── xstate-actor/       # Async actor system (Tokio, supervision, spawn)
-└── xstate-wasm/        # WASM bindings (wasm-bindgen)
+├── xstate-ir/              # Language-neutral IR (serde)
+├── xstate-core/            # Runtime (Machine trait, Interpreter, StateValue, ActorLogic, backend traits)
+├── xstate-parser/          # OXC-based TS parser
+├── xstate-codegen/         # IR → Rust source (quote/syn)
+├── xstate-macro/           # #[xstate("path.ts")] proc macro
+├── xstate-napi/            # Node.js bindings (NAPI-RS)
+├── xstate-actor/           # Async actor system (Tokio, spawn, send_to, send_parent)
+├── xstate-backend-native/  # Single-threaded WASM-compatible actor system
+├── xstate-wasm/            # WASM bindings (JsMachine, JsActorSystem, JS callbacks)
+└── xstate-bench/           # Criterion benchmarks
 ```
 
 | Crate | Purpose | Depends On |
 |-------|---------|------------|
 | `xstate-ir` | Language-neutral XState intermediate representation | — |
-| `xstate-core` | Pure Rust runtime (Machine trait, Snapshot, StateValue, Interpreter) | `xstate-ir` |
+| `xstate-core` | Pure Rust runtime (Machine trait, Snapshot, StateValue, Interpreter, ActorLogic, backend traits) | `xstate-ir` |
 | `xstate-parser` | OXC-based TypeScript parser, extracts XState AST → IR | `xstate-ir` |
 | `xstate-codegen` | `quote`/`syn` Rust code generator (IR → Rust source) | `xstate-ir` |
 | `xstate-macro` | `#[xstate("path.ts")]` proc macro | `xstate-ir`, `xstate-parser`, `xstate-codegen` |
 | `xstate-napi` | Node.js native bindings | `xstate-core` |
-| `xstate-actor` | Async actor system (supervision, send_to/send_parent, spawn) | `xstate-core`, `tokio` |
-| `xstate-wasm` | WASM bindings for browser/Node.js | `xstate-core`, `wasm-bindgen` |
+| `xstate-actor` | Async actor system (Tokio, spawn, send_to, send_parent) | `xstate-core`, `tokio` |
+| `xstate-backend-native` | Single-threaded WASM-compatible actor system | `xstate-core` |
+| `xstate-wasm` | WASM bindings (JsMachine, JsActorSystem, JS callbacks) | `xstate-core`, `xstate-backend-native`, `wasm-bindgen` |
+| `xstate-bench` | Criterion benchmarks for Interpreter and NativeActorSystem | `xstate-core`, `xstate-backend-native`, `criterion` |
 
 ---
 
@@ -113,15 +117,15 @@ let interpreter = Interpreter::new(machine);
 let state = interpreter.initial_state();
 let mut ctx = interpreter.initial_context();
 
-let guard = |_: &str, _: &serde_json::Value| true;
-let mut action_fn = |_: &str, _: &serde_json::Value| {};
+let guard = |_: &str, _: &serde_json::Value, _: &serde_json::Value| true;
+let mut action_fn = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
 
-let new_state = interpreter.send(&state, "TOGGLE", &mut ctx, &guard, &mut action_fn);
+let new_state = interpreter.send(&state, &event, &mut ctx, &guard, &mut action_fn, &clock);
 ```
 
 ### C. NAPI-RS (Node.js)
 
-The `xstate-napi` crate exposes a native Node.js binding via NAPI-RS and can also compile to WASM.
+The `xstate-napi` crate exposes a native Node.js binding via NAPI-RS.
 
 ```typescript
 const { JsMachine } = require('xstate-napi');
@@ -137,6 +141,33 @@ const snapshot = machine.send({ type: 'TOGGLE' });
 | `JsMachine.fromIr(json, ctx)` | JSON string, initial context | Machine instance with custom context |
 | `.snapshot()` | — | `{ value, context }` |
 | `.send(event)` | `{ type: string }` | `{ value, context }` or null |
+
+### D. WASM (Browser)
+
+The `xstate-wasm` crate provides browser-compatible bindings via wasm-bindgen.
+
+```bash
+cd crates/xstate-wasm && ./build.sh
+```
+
+```javascript
+import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from '@restingstate/wasm';
+await init();
+
+// Single machine
+const machine = new JsMachine(JSON.stringify(machineIr));
+machine.send(JSON.stringify({ type: 'TOGGLE' }));
+console.log(JSON.parse(machine.snapshot()));
+
+// Actor system
+const system = new JsActorSystem();
+system.spawn("worker", JSON.stringify(workerIr));
+system.sendTo("worker", JSON.stringify({ type: "PROCESS" }));
+
+// JS guard/action callbacks
+registerGuard("isValid", (ctx, event) => ctx.count > 0);
+registerAction("log", (args, event) => console.log(event.type));
+```
 
 ---
 
@@ -161,6 +192,7 @@ const snapshot = machine.send({ type: 'TOGGLE' });
 | Persistence (serialize/restore) | ✓ | 0.2 |
 | Spawned actors | ✓ | 0.3 |
 | Actor systems | ✓ | 0.3 |
+| setup({ actors, guards, actions }) | ✓ | 0.3 |
 
 All 0.1, 0.2, and 0.3 conformance targets are complete. See [docs/CONFORMANCE.md](docs/CONFORMANCE.md) for details.
 
@@ -206,7 +238,7 @@ cargo run -p rust-runner -- tests/compatibility/machines/simple/toggle.json > rs
 node tests/compatibility/compare.mjs js-out.json rs-out.json
 ```
 
-**Current status: 25 hand-crafted + 36 extracted vectors pass** against the xstate.js reference implementation.
+**Current status: 25 hand-crafted + 34 extracted vectors pass** against the xstate.js reference implementation.
 
 The xstate.js source is vendored as a git submodule at `tests/compatibility/xstate-vendor/` (pinned to a specific commit). Test vectors are derived from xstate.js test files without modifying them. Each vector maps a subset of xstate.js behavior that our runtime is expected to match.
 
@@ -214,35 +246,53 @@ The xstate.js source is vendored as a git submodule at `tests/compatibility/xsta
 
 ## 6. Performance Benchmarks
 
-The benchmark harness (`benchmarks/`) compares xstate.js against the WASM implementation running in-process (via `wasm-bindgen`), using machine definitions extracted from the xstate.js examples.
+### FSM Workloads (xstate.js vs xstate-wasm)
 
-**Methodology:** 1,000 warmup events, 100,000 measured events, 5 trials, median reporting. Both runtimes run in the same Node.js process.
+**Methodology:** 1,000 warmup events, 100,000 measured events, 5 trials, mean throughput. Both runtimes run in the same Node.js process.
 
-| Workload | xstate.js (eps) | xstate-wasm (eps) | Speedup | Startup (js / wasm) |
-|----------|----------------|-------------------|---------|---------------------|
-| stopwatch (compound + assign) | 140,117 | **390,742** | **2.8x** | 0.243 ms / 0.129 ms |
-| word (4-region parallel) | 87,702 | **196,115** | **2.2x** | 0.464 ms / 0.106 ms |
-| traffic-light (compound) | 212,746 | **396,621** | **1.9x** | 0.187 ms / 0.035 ms |
-| toggle (atomic) | 217,439 | **386,329** | **1.8x** | 0.149 ms / 0.056 ms |
-| auth (guards) | 185,039 | **276,552** | **1.5x** | 1.636 ms / 0.766 ms |
-| entry-exit (actions) | 792,063 | **976,169** | **1.2x** | 0.223 ms / 0.073 ms |
-| counter (assign) | 419,903 | 340,118 | 0.8x | 0.509 ms / 0.150 ms |
-| timer (always + guard) | 529,681 | 419,659 | 0.8x | 0.222 ms / 0.046 ms |
+| Workload | xstate.js (eps) | xstate-wasm (eps) | Speedup |
+|----------|----------------|-------------------|---------|
+| stopwatch (compound + assign) | 138,740 | **458,413** | **3.3x** |
+| word (4-region parallel) | 72,775 | **179,417** | **2.5x** |
+| traffic-light (compound) | 201,842 | **446,432** | **2.2x** |
+| toggle (atomic) | 205,583 | **423,618** | **2.1x** |
+| auth (guards) | 181,607 | **318,012** | **1.8x** |
+| entry-exit (actions) | 793,915 | **1,086,490** | **1.4x** |
+| counter (assign) | 401,997 | 410,839 | 1.0x |
+| timer (always + guard) | 537,404 | 489,361 | 0.9x |
 
-WASM startup is consistently **3–6x faster** than xstate.js (0.035 ms vs 0.149 ms for toggle).
+### Actor Workloads (xstate.js vs xstate-wasm)
 
-*Note: `counter` and `timer` show slight slowdowns due to context-mutation and guard-evaluation overhead per event. The `form` workload is excluded because its event set doesn't exercise transitions in xstate.js (no-op comparison).*
+| Workload | xstate.js (eps) | xstate-wasm (eps) | Speedup |
+|----------|----------------|-------------------|---------|
+| actor-ping-pong | 698,824 | **1,082,573** | **1.5x** |
+| actor-spawn | 735,244 | **1,060,432** | **1.4x** |
+| actor-broadcast | 515,983 | **645,410** | **1.3x** |
+| actor-reducer | 396,391 | 430,911 | 1.1x |
+
+### Rust-native (Criterion, no WASM overhead)
+
+| Benchmark | Time | Throughput |
+|-----------|------|------------|
+| Interpreter toggle | 331 ns | ~3M events/sec |
+| Interpreter guarded | 121 ns | ~8.3M events/sec |
+| Interpreter actions | 118 ns | ~8.5M events/sec |
+| Actor send 1 event | 645 ns | ~1.5M events/sec |
+| Reducer send 1 event | 178 ns | ~5.6M events/sec |
+| Actor spawn 1 | 842 ns | ~1.2M actors/sec |
 
 ### Running the benchmarks
 
 ```bash
-# Build the WASM package
-cargo build -p xstate-wasm --target wasm32-unknown-unknown --release
-wasm-bindgen --target nodejs --out-dir benchmarks/wasm-pkg \
-  target/wasm32-unknown-unknown/release/xstate_wasm.wasm
+# Rust-native (Criterion)
+cargo bench -p xstate-bench --bench interpreter
+cargo bench -p xstate-bench --bench actor_system
 
-# Run
-cd benchmarks && npm install && npm run bench && npm run report
+# WASM vs xstate.js
+cd benchmarks
+npm ci
+node run-benchmarks.mjs                         # All workloads
+node run-benchmarks.mjs workloads/toggle.json    # Single workload
 ```
 
 Results are written to `benchmarks/results/report.md`.
@@ -253,7 +303,7 @@ Results are written to `benchmarks/results/report.md`.
 
 ```bash
 cargo build --workspace                        # Build all crates
-cargo test --workspace                         # Run all unit tests (128 tests)
+cargo test --workspace                         # Run all unit tests (205 tests)
 cargo fmt --all -- --check                     # Format check
 cargo clippy --all-targets --all-features -- -D warnings  # Lint
 
@@ -264,6 +314,7 @@ node tests/compatibility/compare.mjs js-out.json rs-out.json
 
 # WASM build
 cargo build -p xstate-wasm --target wasm32-unknown-unknown
+cd crates/xstate-wasm && ./build.sh
 ```
 
 ---
