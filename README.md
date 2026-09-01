@@ -324,3 +324,9 @@ cd crates/xstate-wasm && ./build.sh
 - **XState v5**: pinned in `packages/package.json`
 - **OXC**: 0.77.x
 - **Rust**: edition 2024, MSRV 1.97 (toolchain pinned via `rust-toolchain.toml`)
+
+---
+
+## Embedding
+
+Consume restingstate as a dependency — Rust via git tag (Mode A) or WASM/JS via npm/Release artifacts (Mode B). Guide: [docs/embedding.md](docs/embedding.md), with executable demos in [`examples/embed`](examples/embed) (`cargo test -p embed`) and [`examples/js-embed`](examples/js-embed) (`node demo.mjs`) — every documented snippet is executed by CI. API stability: [docs/contracts.md](docs/contracts.md); supported runtime path: [docs/runtime-paths.md](docs/runtime-paths.md).

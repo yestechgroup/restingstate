@@ -15,6 +15,7 @@ members = [
     "tests/compatibility/rust-runner",
     "examples/rust-token-bucket",
     "examples/rust-dynamic",
+    "examples/embed",
 ]
 
 [workspace.package]
