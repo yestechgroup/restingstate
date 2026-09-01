@@ -324,3 +324,26 @@ cd crates/xstate-wasm && ./build.sh
 - **XState v5**: pinned in `packages/package.json`
 - **OXC**: 0.77.x
 - **Rust**: edition 2024, MSRV 1.97 (toolchain pinned via `rust-toolchain.toml`)
+
+---
+
+## Releases
+
+Releases are tag-driven: pushing a `v*` tag runs
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which builds
+the WASM package, publishes crates to crates.io in dependency order, and cuts a
+GitHub Release. See [CHANGELOG.md](CHANGELOG.md) and the
+[releases page](https://github.com/yestechgroup/restingstate/releases).
+
+**Rust** — depend on a released tag:
+
+```toml
+[dependencies]
+xstate-core = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
+```
+
+**npm** — the WASM build ships as [`@restingstate/wasm`](https://www.npmjs.com/package/@restingstate/wasm):
+
+```bash
+npm install @restingstate/wasm
+```

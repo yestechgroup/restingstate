@@ -1,0 +1,271 @@
+name: Release
+
+# Tag-driven release pipeline (issue #32). Pushing a `v*` tag produces both
+# distribution modes:
+#   * npm package `@restingstate/wasm` assembled from wasm-pack bundler+nodejs
+#     outputs by scripts/assemble-npm.mjs
+#   * ordered crates.io publishes: ir → core → parser → backend-native →
+#     actor → codegen → macro
+#   * a GitHub Release with the npm tarball, wasm sizes, a compatibility
+#     summary, and the CHANGELOG section matching the tag version.
+#
+# Secret-guard pattern (env intermediary): the `secrets` context is NOT
+# available in `if:` expressions ("Unrecognized named-value: 'secrets'"), and
+# job-level `if:` cannot see the job's own `env:` either. So each token is
+# surfaced once as a job-level env var (the only place secrets may feed env),
+# and the publish/skip steps branch on `env.<TOKEN> != ''`. The token-bearing
+# env var is inherited by the publish step itself, so the secret never appears
+# in argv or in the workflow file. With no token configured, publishes are
+# skipped with ::notice markers and the build/artifact/release steps still run
+# — a tag push without secrets yields artifacts + a GitHub Release, never a
+# partial publish.
+#
+# Toolchain/node conventions mirror ci.yml: actions-rust-lang/setup-rust-toolchain@v1
+# (rust-toolchain.toml pins 1.97.1), node 20, checkout@v4. The wasm-bindgen CLI
+# version is wasm-pack's problem: it reads Cargo.lock (0.2.127) and fetches the
+# matching CLI itself, so no wasm-bindgen-action pin is needed here.
+
+on:
+  push:
+    tags: ['v*']
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------- Job A --
+  # Build wasm (bundler + nodejs targets), assemble dist-npm/, publish to npm
+  # only when NPM_TOKEN exists. dist-npm/ is uploaded as an artifact before
+  # the publish attempt, so it is captured even without secrets.
+  npm-package:
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Prebuilt wasm-pack binary (seconds) instead of `cargo install
+      # wasm-pack --locked` (minutes of compiling on the runner).
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build wasm (bundler target)
+        run: wasm-pack build crates/xstate-wasm --target bundler --release --out-dir pkg-bundler
+
+      - name: Build wasm (nodejs target)
+        run: wasm-pack build crates/xstate-wasm --target nodejs --release --out-dir pkg-node
+
+      - name: Assemble npm package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # --out-dir paths are relative to the crate; the assembler consumes
+          # the two pkg dirs plus the tag-derived version, nothing else.
+          node scripts/assemble-npm.mjs \
+            --version "$VERSION" \
+            --bundler crates/xstate-wasm/pkg-bundler \
+            --node crates/xstate-wasm/pkg-node \
+            --out dist-npm
+
+      # Uploaded before the publish attempt: the artifact exists even when the
+      # token is absent or the publish itself fails.
+      - name: Upload dist-npm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-npm
+          path: dist-npm/
+
+      - name: Publish to npm
+        if: env.NPM_TOKEN != ''
+        run: |
+          printf '//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n' >> "$HOME/.npmrc"
+          npm publish dist-npm/ --access public
+
+      - name: Skip npm publish (no token)
+        if: env.NPM_TOKEN == ''
+        run: echo "::notice::NPM_TOKEN is not configured — npm publish skipped. dist-npm/ was still assembled and uploaded as an artifact."
+
+  # ---------------------------------------------------------------- Job B --
+  # Dry-run gate then publish each crate, in dependency order so that every
+  # workspace path dep is already on crates.io when its dependent publishes
+  # (this is also what un-blocks the dry-run gate's dependency resolution).
+  cargo-publish:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Dry-run gate + publish crates in dependency order
+        if: env.CARGO_REGISTRY_TOKEN != ''
+        run: |
+          set -u -o pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          crates="xstate-ir xstate-core xstate-parser xstate-backend-native xstate-actor xstate-codegen xstate-macro"
+          for crate in $crates; do
+            echo "::group::$crate — dry-run gate"
+            ok=0
+            # A predecessor crate was published seconds ago in this same loop;
+            # the crates.io index can lag behind, so retry the gate before
+            # concluding it failed for a real reason.
+            for attempt in 1 2 3 4; do
+              if cargo publish --dry-run --allow-dirty -p "$crate"; then
+                ok=1
+                break
+              fi
+              echo "dry-run attempt $attempt for $crate failed; retrying in 30s (possible index lag)"
+              sleep 30
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "::error::$crate: publish dry-run gate failed after retries"
+              exit 1
+            fi
+            echo "::endgroup::"
+
+            echo "::group::$crate — publish"
+            log="$(mktemp)"
+            # Token comes from the CARGO_REGISTRY_TOKEN env var (cargo's native
+            # channel). Deliberately NOT `--token "$TOKEN"` on the command
+            # line, which would expose the secret in argv/process listings.
+            if cargo publish -p "$crate" 2>&1 | tee "$log"; then
+              echo "$crate: published $VERSION"
+            elif grep -qE 'already exists|already uploaded' "$log"; then
+              echo "::notice::$crate $VERSION is already on crates.io — treated as published (idempotent tag re-run)"
+            else
+              echo "::error::$crate: cargo publish failed"
+              tail -n 40 "$log"
+              exit 1
+            fi
+            rm -f "$log"
+            echo "::endgroup::"
+
+            # Let the index settle before the next crate's dry-run resolves deps.
+            sleep 20
+          done
+
+      - name: Skip crates.io publish (no token)
+        if: env.CARGO_REGISTRY_TOKEN == ''
+        run: echo "::notice::CARGO_REGISTRY_TOKEN is not configured — crates.io publish skipped."
+
+  # ---------------------------------------------------------------- Job C --
+  # GitHub Release: npm tarball, wasm sizes, hand-crafted compatibility
+  # summary (ci.yml compatibility-job shape), and the CHANGELOG section for
+  # the tagged version. Runs with only the workflow's GITHUB_TOKEN.
+  github-release:
+    needs: [npm-package, cargo-publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+        # xstate (peer for the ts-runner) comes from the root package.json.
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-npm
+          path: dist-npm
+
+      - name: Install JS deps (xstate v5 for the compatibility harness)
+        run: npm ci
+
+      - name: Build compatibility runner
+        run: cargo build -p rust-runner --release
+
+      - name: Compatibility summary (hand-crafted vectors)
+        id: compat
+        run: |
+          set -e
+          PASS=0
+          FAIL=0
+          for tv in tests/compatibility/machines/**/*.json; do
+            echo "::group::$(basename $tv)"
+            node tests/compatibility/ts-runner.mjs "$tv" > /tmp/js-out.json
+            ./target/release/rust-runner "$tv" > /tmp/rs-out.json
+            if node tests/compatibility/compare.mjs /tmp/js-out.json /tmp/rs-out.json; then
+              PASS=$((PASS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+            echo "::endgroup::"
+          done
+          echo "Hand-crafted vectors: $PASS passed, $FAIL failed"
+          [ "$FAIL" -eq 0 ]
+          echo "pass=$PASS" >> "$GITHUB_OUTPUT"
+          echo "fail=$FAIL" >> "$GITHUB_OUTPUT"
+
+      - name: Extract CHANGELOG section for the tagged version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="$VERSION" awk '
+            $0 ~ "^## \\[" ENVIRON["VERSION"] "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > changelog-section.md || true
+          if [ -s changelog-section.md ]; then
+            echo "found=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record wasm sizes + build npm tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ls -l dist-npm/pkg-bundler/*.wasm dist-npm/pkg-node/*.wasm | tee wasm-size.txt
+          npm pack dist-npm/ --pack-destination .
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          {
+            echo "## Changes"
+            echo
+            if [ -s changelog-section.md ]; then
+              cat changelog-section.md
+            else
+              echo "_No CHANGELOG section found for $VERSION._"
+            fi
+            echo
+            echo "## Artifacts"
+            echo
+            echo "- npm: \`@restingstate/wasm@$VERSION\` (tarball attached)"
+            echo "- crates.io: xstate-ir, xstate-core, xstate-parser, xstate-backend-native, xstate-actor, xstate-codegen, xstate-macro"
+            echo
+            echo "WASM binary sizes:"
+            echo
+            echo '```'
+            cat wasm-size.txt
+            echo '```'
+            echo
+            echo "## Compatibility"
+            echo
+            echo "Hand-crafted vectors vs xstate.js: ${{ steps.compat.outputs.pass }} passed, ${{ steps.compat.outputs.fail }} failed."
+          } > release-notes.md
+
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "restingstate $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            restingstate-wasm-*.tgz
