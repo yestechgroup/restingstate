@@ -142,6 +142,16 @@ jobs:
       - name: Run wasm-bindgen tests
         run: CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test -p xstate-wasm --target wasm32-unknown-unknown
 
+      # Issue #33: the JS embedding demo is the executable check for
+      # docs/embedding.md Mode B. Tools are already set up above (matching
+      # wasm-bindgen cli, node, wasm32 target); exact commands from
+      # examples/js-embed/README.md.
+      - name: Run JS embedding demo against the built wasm
+        run: |
+          cargo build -p xstate-wasm --target wasm32-unknown-unknown --release
+          wasm-bindgen --target nodejs --out-dir examples/js-embed/pkg --out-name xstate_wasm target/wasm32-unknown-unknown/release/xstate_wasm.wasm
+          node examples/js-embed/demo.mjs
+
   # MSRV floor check. workspace.package rust-version = "1.97" (rust-toolchain.toml
   # pins 1.97.1 for everyone else). Setting the `toolchain` input makes
   # setup-rust-toolchain ignore the toolchain file, and its default
