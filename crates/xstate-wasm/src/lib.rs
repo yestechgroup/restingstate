@@ -16,6 +16,15 @@ fn machine_error(machine: &Machine) -> Result<(), JsValue> {
         .map_err(|e: MachineValidationError| JsValue::from_str(&e.to_string()))
 }
 
+/// Validate a machine-IR JSON string without building a machine (#30).
+/// Returns `"ok"` on success; the error message explains what is broken.
+#[wasm_bindgen(js_name = validateMachine)]
+pub fn validate_machine(machine_json: &str) -> Result<String, JsValue> {
+    xstate_core::validate_machine_json(machine_json)
+        .map(|()| "ok".to_string())
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 thread_local! {
     static JS_GUARDS: RefCell<HashMap<String, js_sys::Function>> = RefCell::new(HashMap::new());
     static JS_ACTIONS: RefCell<HashMap<String, js_sys::Function>> = RefCell::new(HashMap::new());

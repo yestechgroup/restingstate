@@ -9,6 +9,11 @@ readme = "README.md"
 keywords = ["xstate", "statechart", "state-machine", "ir"]
 categories = ["data-structures", "rust-patterns"]
 
+[features]
+# Opt-in JSON Schema generation for the IR (#30); default builds are unaffected.
+schema = ["dep:schemars"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+schemars = { workspace = true, optional = true }

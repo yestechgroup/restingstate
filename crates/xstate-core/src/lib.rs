@@ -7,6 +7,7 @@ pub mod interpreter;
 pub mod machine;
 pub mod snapshot;
 pub mod state_value;
+pub mod validation;
 
 pub use actions::{ActionImpl, ActionRegistry};
 pub use actor_logic::{
@@ -22,4 +23,5 @@ pub use interpreter::{Interpreter, MachineValidationError};
 pub use machine::{Actions, Guards, Machine};
 pub use snapshot::Snapshot;
 pub use state_value::StateValue;
+pub use validation::{ValidateError, validate_machine_json, validate_machine_structure};
 pub use xstate_ir;
