@@ -13,6 +13,10 @@ use xstate_ir::{Machine, StateNode, StateType, Transition};
 type Mailbox = Arc<Mutex<Vec<Effect>>>;
 type RegistryFactory = Arc<dyn Fn() -> (GuardRegistry, ActionRegistry) + Send + Sync>;
 
+// Issue #29: bound each dispatch so degenerate self-sending machines cannot
+// wedge the run loop forever.
+const MAX_EFFECTS_PER_DISPATCH: usize = 10_000;
+
 #[derive(Debug, Clone)]
 enum Effect {
     Send {
@@ -188,7 +192,12 @@ impl Inner {
 
     fn run(&self, seeds: Vec<(String, serde_json::Value)>) {
         let mut queue: VecDeque<(String, serde_json::Value)> = seeds.into();
+        let mut processed = 0usize;
         while let Some((id, event)) = queue.pop_front() {
+            processed += 1;
+            if processed > MAX_EFFECTS_PER_DISPATCH {
+                break;
+            }
             let effects = {
                 let mut actors = self.actors.lock().unwrap();
                 let Some(actor) = actors.get_mut(&id) else {

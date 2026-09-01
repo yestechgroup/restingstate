@@ -7,8 +7,14 @@ use xstate_core::actions::{ActionImpl, ActionRegistry};
 use xstate_core::actor_logic::ReducerLogic;
 use xstate_core::backend::{ActorStatus, ActorSystem as BackendActorSystem};
 use xstate_core::guards::{GuardImpl, GuardRegistry};
-use xstate_core::{Interpreter, MockClock};
+use xstate_core::{Interpreter, MachineValidationError, MockClock};
 use xstate_ir::Machine;
+
+fn machine_error(machine: &Machine) -> Result<(), JsValue> {
+    // Robustness (#29): reject semantically broken machines with a typed JS error.
+    Interpreter::validate_machine(machine)
+        .map_err(|e: MachineValidationError| JsValue::from_str(&e.to_string()))
+}
 
 thread_local! {
     static JS_GUARDS: RefCell<HashMap<String, js_sys::Function>> = RefCell::new(HashMap::new());
@@ -126,6 +132,7 @@ impl JsMachine {
     pub fn new(machine_json: &str) -> Result<JsMachine, JsValue> {
         let machine: Machine = serde_json::from_str(machine_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
+        machine_error(&machine)?;
         let interpreter = Interpreter::new(machine);
         let state = interpreter.initial_state();
         let context = interpreter.initial_context();
@@ -158,6 +165,7 @@ impl JsMachine {
     pub fn restore(machine_json: &str, snapshot_json: &str) -> Result<JsMachine, JsValue> {
         let machine: Machine = serde_json::from_str(machine_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
+        machine_error(&machine)?;
         let snapshot: serde_json::Value = serde_json::from_str(snapshot_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid snapshot JSON: {}", e)))?;
         let interpreter = Interpreter::new(machine);
@@ -276,6 +284,7 @@ impl JsActorSystem {
     pub fn spawn(&self, id: &str, machine_json: &str) -> Result<(), JsValue> {
         let machine: Machine = serde_json::from_str(machine_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
+        machine_error(&machine)?;
         self.system.spawn_machine(id, machine);
         Ok(())
     }
@@ -284,6 +293,7 @@ impl JsActorSystem {
     pub fn register_machine(&self, name: &str, machine_json: &str) -> Result<(), JsValue> {
         let machine: Machine = serde_json::from_str(machine_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid machine JSON: {}", e)))?;
+        machine_error(&machine)?;
         self.system.register_machine(name, machine);
         Ok(())
     }
