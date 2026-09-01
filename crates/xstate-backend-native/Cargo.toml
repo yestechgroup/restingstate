@@ -4,12 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Single-threaded, WASM-compatible actor system backend for xstate-core machines."
+readme = "README.md"
+keywords = ["xstate", "statechart", "wasm", "actor", "state-machine"]
+categories = ["wasm", "concurrency"]
 
 [features]
 default = ["async"]
 async = ["xstate-core/async"]
 
 [dependencies]
-xstate-core = { path = "../xstate-core", default-features = false }
-xstate-ir = { path = "../xstate-ir" }
+xstate-core = { path = "../xstate-core", version = "0.2.0", default-features = false }
+xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
 serde_json.workspace = true
