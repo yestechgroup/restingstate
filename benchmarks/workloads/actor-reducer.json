@@ -1,0 +1,34 @@
+{
+  "name": "actor-reducer",
+  "description": "Pure reducer actor processing INC events",
+  "machine_config": {
+    "id": "reducer",
+    "initial": "active",
+    "context": { "count": 0 },
+    "states": {
+      "active": {
+        "on": {
+          "INC": { "actions": ["increment"] }
+        }
+      }
+    }
+  },
+  "machine_ir": {
+    "id": "reducer",
+    "initial": "active",
+    "context": { "fields": [{ "name": "count", "type_name": "number", "default_value": 0 }] },
+    "states": [
+      {
+        "name": "active",
+        "transitions": [{ "event": "INC", "target": null, "actions": [{ "name": "assign", "args": ["count", 1], "description": null, "delay_ms": null, "targets": [], "guard": null }], "description": null, "delay_ms": null, "targets": [], "guard": null }],
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "invoke": null, "type": "atomic"
+      }
+    ],
+    "setup": null
+  },
+  "events": [
+    { "type": "INC" }
+  ],
+  "event_sequence_length": 100000
+}

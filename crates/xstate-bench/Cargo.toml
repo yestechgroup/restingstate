@@ -1,0 +1,24 @@
+[package]
+name = "xstate-bench"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bench]]
+name = "interpreter"
+harness = false
+
+[[bench]]
+name = "actor_system"
+harness = false
+
+[dependencies]
+xstate-core = { path = "../xstate-core" }
+xstate-ir = { path = "../xstate-ir" }
+serde_json.workspace = true
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+xstate-core = { path = "../xstate-core" }
+xstate-ir = { path = "../xstate-ir" }
+xstate-backend-native = { path = "../xstate-backend-native" }

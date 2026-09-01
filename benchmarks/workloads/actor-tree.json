@@ -1,0 +1,78 @@
+{
+  "name": "actor-tree",
+  "description": "Tree of actors with depth 3, branching factor 3 (27 leaf actors)",
+  "machine_config": {
+    "id": "tree-parent",
+    "initial": "active",
+    "context": {},
+    "states": {
+      "active": {
+        "invoke": {
+          "src": "branch",
+          "onDone": "done"
+        },
+        "on": {}
+      },
+      "done": {
+        "type": "final"
+      }
+    }
+  },
+  "machine_ir": {
+    "id": "tree-parent",
+    "initial": "active",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "active",
+        "transitions": [],
+        "invoke": { "src": "branch", "id": null, "on_done": [{ "event": "done.invoke.branch", "target": "done", "actions": [], "description": null, "delay_ms": null, "targets": [], "guard": null }], "on_error": [] },
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "type": "atomic"
+      },
+      {
+        "name": "done",
+        "transitions": [],
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "invoke": null, "type": "final"
+      }
+    ],
+    "setup": null
+  },
+  "actors": {
+    "branch": {
+      "id": "branch",
+      "initial": "active",
+      "context": {},
+      "states": {
+        "active": {
+          "invoke": {
+            "src": "leaf",
+            "onDone": "done"
+          },
+          "on": {}
+        },
+        "done": {
+          "type": "final"
+        }
+      }
+    },
+    "leaf": {
+      "id": "leaf",
+      "initial": "running",
+      "context": {},
+      "states": {
+        "running": {
+          "on": { "COMPLETE": "done" }
+        },
+        "done": {
+          "type": "final"
+        }
+      }
+    }
+  },
+  "events": [
+    { "type": "COMPLETE" }
+  ],
+  "event_sequence_length": 100000
+}

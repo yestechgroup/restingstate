@@ -173,6 +173,99 @@ function buildActorImpls(invokeNames) {
   return actors;
 }
 
+function isActorWorkload(workload) {
+  return Boolean(workload.actors && Object.keys(workload.actors).length > 0);
+}
+
+function benchXstateJsActors(workload) {
+  const machineConfig = workload.machine_config;
+  const events = workload.events;
+  const actorDefs = workload.actors || {};
+
+  const guardNames = collectGuards(machineConfig);
+  const guards = buildGuardImpls(guardNames);
+
+  const actorMachines = {};
+  for (const [name, def] of Object.entries(actorDefs)) {
+    actorMachines[name] = createMachine(def);
+  }
+
+  const actorProviders = {};
+  for (const name of Object.keys(actorDefs)) {
+    actorProviders[name] = actorMachines[name];
+  }
+
+  const results = [];
+  let totalActorsSpawned = 0;
+
+  for (let trial = 0; trial < TRIALS; trial++) {
+    let actorsSpawned = 0;
+
+    const startStart = performance.now();
+    const machine = createMachine(machineConfig, {
+      guards,
+      actors: actorProviders,
+    });
+    const actor = createActor(machine).start();
+    const startEnd = performance.now();
+
+    for (let i = 0; i < WARMUP; i++) {
+      try {
+        const snap = actor.getSnapshot();
+        const prevChildren = snap.children
+          ? Object.keys(snap.children).length
+          : 0;
+        actor.send(events[i % events.length]);
+        const newSnap = actor.getSnapshot();
+        const newChildren = newSnap.children
+          ? Object.keys(newSnap.children).length
+          : 0;
+        if (newChildren > prevChildren) {
+          actorsSpawned += newChildren - prevChildren;
+        }
+      } catch {}
+    }
+
+    const benchStart = performance.now();
+    let eventIdx = 0;
+    for (let i = 0; i < MEASURED; i++) {
+      try {
+        const snap = actor.getSnapshot();
+        const prevChildren = snap.children
+          ? Object.keys(snap.children).length
+          : 0;
+        actor.send(events[eventIdx % events.length]);
+        const newSnap = actor.getSnapshot();
+        const newChildren = newSnap.children
+          ? Object.keys(newSnap.children).length
+          : 0;
+        if (newChildren > prevChildren) {
+          actorsSpawned += newChildren - prevChildren;
+        }
+      } catch {}
+      eventIdx++;
+    }
+    const benchEnd = performance.now();
+
+    try { actor.stop(); } catch {}
+    totalActorsSpawned += actorsSpawned;
+
+    const snapshot = actor.getSnapshot();
+    results.push({
+      startup_ms: startEnd - startStart,
+      total_ms: benchEnd - benchStart,
+      throughput_eps: Math.round(
+        MEASURED / ((benchEnd - benchStart) / 1000)
+      ),
+      snapshot_bytes: JSON.stringify(snapshot).length,
+      actors_spawned: actorsSpawned,
+    });
+  }
+
+  const avgActors = totalActorsSpawned / TRIALS;
+  return { results, avgActorsSpawned: avgActors };
+}
+
 function benchXstateJs(machineConfig, events) {
   const guardNames = collectGuards(machineConfig);
   const invokeNames = collectInvokes(machineConfig);
@@ -277,13 +370,25 @@ function benchmarkWorkload(name, wasmMod) {
   console.log(`\nBenchmarking: ${name}`);
   const workload = loadWorkload(name);
   const events = workload.events;
+  const isActor = isActorWorkload(workload);
 
-  console.log(`  xstate.js: ${TRIALS} trials...`);
-  const xstateResults = benchXstateJs(workload.machine_config, events);
+  console.log(
+    `  xstate.js${isActor ? ' (actors)' : ''}: ${TRIALS} trials...`
+  );
+  let xstateResults;
+  let avgActorsSpawned = 0;
+  if (isActor) {
+    const actorResult = benchXstateJsActors(workload);
+    xstateResults = actorResult.results;
+    avgActorsSpawned = actorResult.avgActorsSpawned;
+  } else {
+    xstateResults = benchXstateJs(workload.machine_config, events);
+  }
   const xstateAgg = aggregate(xstateResults);
   console.log(
     `    ${xstateAgg.throughput_eps.mean.toLocaleString()} eps `
     + `(startup ${xstateAgg.startup_ms.mean.toFixed(3)} ms)`
+    + (isActor ? ` [actors avg: ${avgActorsSpawned.toFixed(0)}]` : '')
   );
 
   console.log(`  xstate-wasm: ${TRIALS} trials...`);
@@ -305,6 +410,9 @@ function benchmarkWorkload(name, wasmMod) {
 
   return {
     workload: name,
+    is_actor: isActor,
+    actor_count: isActor ? Object.keys(workload.actors || {}).length : 0,
+    avg_actors_spawned: isActor ? avgActorsSpawned : null,
     warmup_events: WARMUP,
     measured_events: MEASURED,
     trials: TRIALS,
@@ -368,6 +476,7 @@ function main() {
 
 function generateMarkdown(report) {
   const { system, results } = report;
+  const hasActors = results.some((r) => r.is_actor);
 
   let md = '## Performance Benchmarks\n\n';
   md += `System: ${system.os}, CPU: ${system.cpu}\n`;
@@ -377,10 +486,17 @@ function generateMarkdown(report) {
   md += `Trials: ${system.trials}\n`;
   md += `Timestamp: ${system.timestamp}\n\n`;
 
-  md +=
-    '| Workload | xstate.js (eps) | xstate-wasm (eps) | Speedup | Startup (js / wasm) |\n';
-  md +=
-    '|----------|----------------|-------------------|---------|--------------------|\n';
+  if (hasActors) {
+    md +=
+      '| Workload | xstate.js (eps) | xstate-wasm (eps) | Speedup | Actors | Avg Spawned |\n';
+    md +=
+      '|----------|----------------|-------------------|---------|--------|-------------|\n';
+  } else {
+    md +=
+      '| Workload | xstate.js (eps) | xstate-wasm (eps) | Speedup | Startup (js / wasm) |\n';
+    md +=
+      '|----------|----------------|-------------------|---------|--------------------|\n';
+  }
 
   for (const r of results) {
     const jsEps = r.xstate_js.throughput_eps.mean.toLocaleString();
@@ -388,16 +504,26 @@ function generateMarkdown(report) {
       ? r.xstate_wasm.throughput_eps.mean.toLocaleString()
       : '—';
     const speedup = r.speedup ? `${r.speedup.toFixed(1)}x` : '—';
-    const jsStartup = `${r.xstate_js.startup_ms.mean.toFixed(3)} ms`;
-    const wasmStartup = r.xstate_wasm
-      ? `${r.xstate_wasm.startup_ms.mean.toFixed(3)} ms`
-      : '—';
-    const startup = `${jsStartup} / ${wasmStartup}`;
 
-    const pad = (s, n) => s.padEnd(n);
-    md +=
-      `| ${pad(r.workload, 8)} | ${pad(jsEps, 14)} | ${pad(wasmEps, 17)} | ` +
-      `${pad(speedup, 7)} | ${startup} |\n`;
+    if (r.is_actor) {
+      const actorCount = r.actor_count ?? '—';
+      const avgSpawned =
+        r.avg_actors_spawned != null ? r.avg_actors_spawned.toFixed(0) : '—';
+      const pad = (s, n) => String(s).padEnd(n);
+      md +=
+        `| ${pad(r.workload, 15)} | ${pad(jsEps, 14)} | ${pad(wasmEps, 17)} | `
+        + `${pad(speedup, 7)} | ${pad(actorCount, 6)} | ${pad(avgSpawned, 11)} |\n`;
+    } else {
+      const jsStartup = `${r.xstate_js.startup_ms.mean.toFixed(3)} ms`;
+      const wasmStartup = r.xstate_wasm
+        ? `${r.xstate_wasm.startup_ms.mean.toFixed(3)} ms`
+        : '—';
+      const startup = `${jsStartup} / ${wasmStartup}`;
+      const pad = (s, n) => String(s).padEnd(n);
+      md +=
+        `| ${pad(r.workload, 15)} | ${pad(jsEps, 14)} | ${pad(wasmEps, 17)} | `
+        + `${pad(speedup, 7)} | ${startup} |\n`;
+    }
   }
 
   return md;

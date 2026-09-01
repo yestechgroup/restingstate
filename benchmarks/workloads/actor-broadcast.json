@@ -1,0 +1,44 @@
+{
+  "name": "actor-broadcast",
+  "description": "Parent broadcasts event to N children simultaneously",
+  "machine_config": {
+    "id": "broadcaster",
+    "initial": "idle",
+    "context": {},
+    "states": {
+      "idle": {
+        "on": { "START": "active" }
+      },
+      "active": {
+        "on": {
+          "BROADCAST": { "actions": ["broadcast"] }
+        }
+      }
+    }
+  },
+  "machine_ir": {
+    "id": "broadcaster",
+    "initial": "idle",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "idle",
+        "transitions": [{ "event": "START", "target": "active", "actions": [], "description": null, "delay_ms": null, "targets": [], "guard": null }],
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "invoke": null, "type": "atomic"
+      },
+      {
+        "name": "active",
+        "transitions": [{ "event": "BROADCAST", "target": null, "actions": [], "description": null, "delay_ms": null, "targets": [], "guard": null }],
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "invoke": null, "type": "atomic"
+      }
+    ],
+    "setup": null
+  },
+  "events": [
+    { "type": "START" },
+    { "type": "BROADCAST" }
+  ],
+  "event_sequence_length": 100000
+}

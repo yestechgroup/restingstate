@@ -1,0 +1,76 @@
+{
+  "name": "actor-ping-pong",
+  "description": "Parent sends PING to child, child sends PONG back via sendParent",
+  "machine_config": {
+    "id": "ping-pong",
+    "initial": "idle",
+    "context": {},
+    "states": {
+      "idle": {
+        "on": { "START": "playing" }
+      },
+      "playing": {
+        "invoke": {
+          "src": "pongActor",
+          "onDone": "done"
+        },
+        "on": {
+          "PONG": { "actions": ["sendToChild"] }
+        }
+      },
+      "done": {
+        "type": "final"
+      }
+    }
+  },
+  "machine_ir": {
+    "id": "ping-pong",
+    "initial": "idle",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "idle",
+        "transitions": [{ "event": "START", "target": "playing", "actions": [], "description": null, "delay_ms": null, "targets": [], "guard": null }],
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "invoke": null, "type": "atomic"
+      },
+      {
+        "name": "playing",
+        "transitions": [
+          { "event": "PONG", "target": null, "actions": [{ "name": "xstate.send_to", "args": ["pongChild", {"type": "PING"}], "description": null, "delay_ms": null, "targets": [], "guard": null }], "description": null, "delay_ms": null, "targets": [], "guard": null }
+        ],
+        "invoke": { "src": "pongActor", "id": "pongChild", "on_done": [{ "event": "done.invoke.pongChild", "target": "done", "actions": [], "description": null, "delay_ms": null, "targets": [], "guard": null }], "on_error": [] },
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "type": "atomic"
+      },
+      {
+        "name": "done",
+        "transitions": [],
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "invoke": null, "type": "final"
+      }
+    ],
+    "setup": null
+  },
+  "actors": {
+    "pongActor": {
+      "id": "pongActor",
+      "initial": "waiting",
+      "context": {},
+      "states": {
+        "waiting": {
+          "on": {
+            "PING": {
+              "target": null,
+              "actions": [{ "name": "xstate.send_parent", "args": [{"type": "PONG"}], "description": null, "delay_ms": null, "targets": [], "guard": null }]
+            }
+          }
+        }
+      }
+    }
+  },
+  "events": [
+    { "type": "START" }
+  ],
+  "event_sequence_length": 100000
+}

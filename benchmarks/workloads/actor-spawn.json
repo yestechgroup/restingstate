@@ -1,0 +1,71 @@
+{
+  "name": "actor-spawn",
+  "description": "Spawn child machine actor, send event, child completes via final state",
+  "machine_config": {
+    "id": "spawner",
+    "initial": "idle",
+    "context": {},
+    "states": {
+      "idle": {
+        "on": { "START": "active" }
+      },
+      "active": {
+        "invoke": {
+          "src": "childWorker",
+          "onDone": "done"
+        },
+        "on": {}
+      },
+      "done": {
+        "type": "final"
+      }
+    }
+  },
+  "machine_ir": {
+    "id": "spawner",
+    "initial": "idle",
+    "context": { "fields": [] },
+    "states": [
+      {
+        "name": "idle",
+        "transitions": [{ "event": "START", "target": "active", "actions": [], "description": null, "delay_ms": null, "targets": [], "guard": null }],
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "invoke": null, "type": "atomic"
+      },
+      {
+        "name": "active",
+        "transitions": [],
+        "invoke": { "src": "childWorker", "id": null, "on_done": [{ "event": "done.invoke.childWorker", "target": "done", "actions": [], "description": null, "delay_ms": null, "targets": [], "guard": null }], "on_error": [] },
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "type": "atomic"
+      },
+      {
+        "name": "done",
+        "transitions": [],
+        "children": [], "tags": [], "entry": [], "exit": [], "on_done": [], "output": null,
+        "description": null, "initial": null, "invoke": null, "type": "final"
+      }
+    ],
+    "setup": null
+  },
+  "actors": {
+    "childWorker": {
+      "id": "childWorker",
+      "initial": "running",
+      "context": {},
+      "states": {
+        "running": {
+          "on": { "COMPLETE": "finished" }
+        },
+        "finished": {
+          "type": "final"
+        }
+      }
+    }
+  },
+  "events": [
+    { "type": "START" },
+    { "type": "COMPLETE" }
+  ],
+  "event_sequence_length": 100000
+}
