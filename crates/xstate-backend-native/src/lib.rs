@@ -296,4 +296,87 @@ mod tests {
         assert!(!system.is_empty());
         assert_eq!(system.len(), 1);
     }
+
+    #[test]
+    fn machine_logic_guard_registry_blocks_and_fires_transition() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use xstate_core::actions::ActionRegistry;
+        use xstate_core::actor_logic::MachineLogic;
+        use xstate_core::clock::MockClock;
+        use xstate_core::guards::{GuardImpl, GuardRegistry};
+        use xstate_core::interpreter::Interpreter;
+        use xstate_core::xstate_ir::{ContextSchema, Machine, StateNode, StateType, Transition};
+
+        let allowed = Arc::new(AtomicBool::new(false));
+        let flag = allowed.clone();
+        let mut guards = GuardRegistry::new();
+        guards.register(GuardImpl::new("canToggle", move |_, _| {
+            flag.load(Ordering::SeqCst)
+        }));
+
+        let machine = Machine {
+            id: "guarded".into(),
+            initial: "off".into(),
+            context: ContextSchema { fields: vec![] },
+            states: vec![
+                StateNode {
+                    name: "off".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![Transition {
+                        event: "TOGGLE".into(),
+                        target: Some("on".into()),
+                        guard: Some(xstate_core::xstate_ir::Guard {
+                            name: "canToggle".into(),
+                        }),
+                        actions: vec![],
+                        description: None,
+                        delay_ms: None,
+                        targets: vec![],
+                    }],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+                StateNode {
+                    name: "on".into(),
+                    description: None,
+                    initial: None,
+                    entry: vec![],
+                    exit: vec![],
+                    transitions: vec![],
+                    children: vec![],
+                    node_type: StateType::Atomic,
+                    tags: vec![],
+                    invoke: None,
+                    on_done: vec![],
+                    output: None,
+                },
+            ],
+            setup: None,
+        };
+
+        let logic = MachineLogic::new_with_registries(
+            Interpreter::new(machine),
+            MockClock::new(0),
+            guards,
+            ActionRegistry::new(),
+        );
+        let system = NativeActorSystem::new();
+        let handle = system.spawn("guarded", Box::new(logic));
+
+        handle.send(serde_json::json!({"type": "TOGGLE"}));
+        assert_eq!(handle.snapshot()["value"], "off");
+
+        allowed.store(true, Ordering::SeqCst);
+        handle.send(serde_json::json!({"type": "TOGGLE"}));
+        assert_eq!(handle.snapshot()["value"], "on");
+    }
 }
