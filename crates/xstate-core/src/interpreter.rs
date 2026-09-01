@@ -42,6 +42,24 @@ pub struct Interpreter {
     entry_times: RefCell<HashMap<String, u64>>,
 }
 
+pub const PERSISTED_SNAPSHOT_VERSION: u64 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PersistError {
+    #[error("persisted snapshot is missing the 'value' field")]
+    MissingValue,
+    #[error("unsupported persisted snapshot version: {0}")]
+    UnsupportedVersion(u64),
+    #[error("invalid state value in persisted snapshot: {0}")]
+    InvalidStateValue(String),
+    #[error("invalid history map in persisted snapshot: {0}")]
+    InvalidHistory(String),
+    #[error("invalid entry_times map in persisted snapshot: {0}")]
+    InvalidEntryTimes(String),
+    #[error("recorded history state is invalid: {0}")]
+    HistoryTargetInvalid(String),
+}
+
 impl Interpreter {
     pub fn new(machine: Machine) -> Self {
         let interpreter = Interpreter {
@@ -151,6 +169,98 @@ impl Interpreter {
             "value": serde_json::to_value(state_value).unwrap(),
             "context": context,
         })
+    }
+
+    pub fn persisted_snapshot(
+        &self,
+        state: &StateValue,
+        context: &serde_json::Value,
+    ) -> serde_json::Value {
+        let history = self.history.borrow();
+        let entry_times = self.entry_times.borrow();
+        serde_json::json!({
+            "value": serde_json::to_value(state).unwrap(),
+            "context": context,
+            "history": serde_json::to_value(&*history).unwrap_or_default(),
+            "entry_times": serde_json::to_value(&*entry_times).unwrap_or_default(),
+            "version": PERSISTED_SNAPSHOT_VERSION,
+        })
+    }
+
+    pub fn restore_persisted(
+        &self,
+        json: &serde_json::Value,
+    ) -> Result<(StateValue, serde_json::Value), PersistError> {
+        if let Some(version) = json.get("version") {
+            let version = version.as_u64().ok_or(PersistError::UnsupportedVersion(
+                version.as_i64().unwrap_or(-1).max(0) as u64,
+            ))?;
+            if version != PERSISTED_SNAPSHOT_VERSION {
+                return Err(PersistError::UnsupportedVersion(version));
+            }
+        }
+        let value_json = json.get("value").ok_or(PersistError::MissingValue)?;
+        let state: StateValue = serde_json::from_value(value_json.clone())
+            .map_err(|e| PersistError::InvalidStateValue(e.to_string()))?;
+        self.validate_state_value_checked(&state, &self.machine.states)
+            .map_err(PersistError::InvalidStateValue)?;
+        let context = json
+            .get("context")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+
+        if let Some(history_json) = json.get("history") {
+            let history: HashMap<String, StateValue> = serde_json::from_value(history_json.clone())
+                .map_err(|e| PersistError::InvalidHistory(e.to_string()))?;
+            for (name, recorded) in &history {
+                let scope = Self::find_node_deep(&self.machine.states, name)
+                    .map(|node| node.children.as_slice())
+                    .unwrap_or(&[]);
+                self.validate_state_value_checked(recorded, scope)
+                    .map_err(|e| PersistError::HistoryTargetInvalid(format!("{name}: {e}")))?;
+            }
+            *self.history.borrow_mut() = history;
+        }
+        if let Some(entry_times_json) = json.get("entry_times") {
+            let entry_times: HashMap<String, u64> =
+                serde_json::from_value(entry_times_json.clone())
+                    .map_err(|e| PersistError::InvalidEntryTimes(e.to_string()))?;
+            *self.entry_times.borrow_mut() = entry_times;
+        }
+
+        Ok((state, context))
+    }
+
+    fn validate_state_value_checked(
+        &self,
+        value: &StateValue,
+        scope: &[StateNode],
+    ) -> Result<(), String> {
+        match value {
+            StateValue::Atomic(name) => {
+                if !scope.iter().any(|s| s.name == *name) {
+                    return Err(format!("State '{}' not found in machine", name));
+                }
+                Ok(())
+            }
+            StateValue::Compound { state, child } => {
+                let node = scope
+                    .iter()
+                    .find(|s| s.name == *state)
+                    .ok_or_else(|| format!("State '{}' not found in machine", state))?;
+                self.validate_state_value_checked(child, &node.children)
+            }
+            StateValue::Parallel { regions } => {
+                for (region_name, region_value) in regions {
+                    let node = scope
+                        .iter()
+                        .find(|s| s.name == *region_name)
+                        .ok_or_else(|| format!("Region '{}' not found in machine", region_name))?;
+                    self.validate_state_value_checked(region_value, &node.children)?;
+                }
+                Ok(())
+            }
+        }
     }
 
     fn validate_state_value(&self, value: &StateValue, scope: &[StateNode]) {

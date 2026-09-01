@@ -13,6 +13,7 @@ async = ["dep:tokio"]
 xstate-ir = { path = "../xstate-ir" }
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 tokio = { version = "1", features = ["sync", "rt", "macros"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

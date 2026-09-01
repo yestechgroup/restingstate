@@ -60,6 +60,7 @@ pub struct MachineLogic {
     clock: Mutex<Box<dyn Clock>>,
     guards: GuardRegistry,
     actions: ActionRegistry,
+    initial: Option<serde_json::Value>,
 }
 
 impl MachineLogic {
@@ -85,7 +86,36 @@ impl MachineLogic {
             clock: Mutex::new(Box::new(clock)),
             guards,
             actions,
+            initial: None,
         }
+    }
+
+    pub fn with_initial_snapshot(mut self, snapshot: serde_json::Value) -> Self {
+        self.initial = Some(snapshot);
+        self
+    }
+
+    pub fn persisted_snapshot(&self, snapshot: &serde_json::Value) -> serde_json::Value {
+        let interp = self.interpreter.lock().unwrap();
+        let state: StateValue = serde_json::from_value(snapshot["value"].clone())
+            .unwrap_or_else(|_| interp.initial_state());
+        let context = snapshot
+            .get("context")
+            .cloned()
+            .unwrap_or_else(|| interp.initial_context());
+        interp.persisted_snapshot(&state, &context)
+    }
+
+    pub fn restore_persisted(
+        &self,
+        json: &serde_json::Value,
+    ) -> Result<serde_json::Value, crate::interpreter::PersistError> {
+        let interp = self.interpreter.lock().unwrap();
+        let (state, context) = interp.restore_persisted(json)?;
+        Ok(serde_json::json!({
+            "value": serde_json::to_value(&state).unwrap_or_default(),
+            "context": context,
+        }))
     }
 }
 
@@ -95,6 +125,9 @@ impl ActorLogic for MachineLogic {
     }
 
     fn initial_snapshot(&self) -> serde_json::Value {
+        if let Some(snapshot) = &self.initial {
+            return snapshot.clone();
+        }
         let interp = self.interpreter.lock().unwrap();
         let state = interp.initial_state();
         let context = interp.initial_context();

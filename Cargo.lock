@@ -1658,6 +1658,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "xstate-ir",
 ]
