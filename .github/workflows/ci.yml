@@ -29,6 +29,25 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+  wasm-build:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build xstate-wasm for WASM
+        run: cargo build -p xstate-wasm --target wasm32-unknown-unknown --release
+
+      - name: Build xstate-backend-native for WASM
+        run: cargo build -p xstate-backend-native --target wasm32-unknown-unknown
+
+      - name: Build xstate-core without async for WASM
+        run: cargo build -p xstate-core --no-default-features --target wasm32-unknown-unknown
+
   compatibility:
     needs: build-and-test
     runs-on: ubuntu-latest

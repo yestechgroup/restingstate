@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>restingstate — Actor System Demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
+  .actor { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; margin: 0.5rem 0; }
+  .actor-name { font-weight: bold; font-size: 1.1rem; }
+  .actor-status { font-size: 0.85rem; padding: 0.15rem 0.5rem; border-radius: 3px; }
+  .running { background: #dcfce7; color: #166534; }
+  .stopped { background: #fee2e2; color: #991b1b; }
+  .done { background: #dbeafe; color: #1e40af; }
+  button { padding: 0.4rem 1rem; font-size: 1rem; cursor: pointer; margin: 0.25rem; }
+  .log { font-family: monospace; font-size: 0.85rem; background: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 4px; max-height: 200px; overflow-y: auto; }
+  .log-entry { margin: 0.2rem 0; }
+  .log-entry.spawn { color: #a78bfa; }
+  .log-entry.send { color: #60a5fa; }
+  .log-entry.stop { color: #f87171; }
+  .log-entry.state { color: #34d399; }
+  #loading { color: #f59e0b; font-weight: bold; }
+  #app { display: none; }
+</style>
+</head>
+<body>
+<h1>restingstate — Actor System (WASM)</h1>
+
+<div id="loading">Loading WASM module...</div>
+<div id="app">
+  <h2>Actor Registry</h2>
+  <div id="actors"></div>
+
+  <h2>Controls</h2>
+  <button id="spawn-btn">Spawn Actor</button>
+  <button id="send-btn">Send Event</button>
+  <button id="stop-btn">Stop Last</button>
+  <button id="broadcast-btn">Broadcast</button>
+
+  <h2>Log</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<script type="module">
+  let JsActorSystem;
+
+  try {
+    const wasm = await import('../../crates/xstate-wasm/pkg/xstate_wasm.js');
+    await wasm.default();
+    JsActorSystem = wasm.JsActorSystem;
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    runDemo();
+  } catch (e) {
+    document.getElementById('loading').textContent =
+      'WASM module not found. Build with: cd crates/xstate-wasm && ./build.sh';
+    console.error('Failed to load WASM:', e);
+  }
+
+  function makeToggleMachine(id) {
+    return {
+      id, initial: "off",
+      context: { fields: [] },
+      states: [
+        {
+          name: "off",
+          transitions: [{ event: "ACTIVATE", target: "on", actions: [], description: null, delay_ms: null, targets: [], guard: null }],
+          children: [], tags: [], entry: [], exit: [], on_done: [], output: null,
+          description: null, initial: null, invoke: null, type: "atomic"
+        },
+        {
+          name: "on",
+          transitions: [{ event: "DEACTIVATE", target: "off", actions: [], description: null, delay_ms: null, targets: [], guard: null }],
+          children: [], tags: [], entry: [], exit: [], on_done: [], output: null,
+          description: null, initial: null, invoke: null, type: "atomic"
+        }
+      ],
+      setup: null
+    };
+  }
+
+  function runDemo() {
+    const system = new JsActorSystem();
+    let actorCount = 0;
+    let lastActorId = null;
+
+    function log(type, msg) {
+      const logEl = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry ' + type;
+      entry.textContent = `[${type}] ${msg}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function refreshActors() {
+      const container = document.getElementById('actors');
+      container.innerHTML = '';
+      const len = system.len();
+      if (len === 0) {
+        container.innerHTML = '<p style="color:#999">No actors spawned</p>';
+        return;
+      }
+      // We don't have a way to list all IDs, so just show count
+      container.innerHTML = `<p>${len} actor(s) running</p>`;
+    }
+
+    document.getElementById('spawn-btn').addEventListener('click', () => {
+      actorCount++;
+      const id = `actor-${actorCount}`;
+      const machine = makeToggleMachine(id);
+      system.spawn(id, JSON.stringify(machine));
+      lastActorId = id;
+      log('spawn', `Spawned "${id}"`);
+      refreshActors();
+    });
+
+    document.getElementById('send-btn').addEventListener('click', () => {
+      if (!lastActorId) { log('send', 'No actors to send to'); return; }
+      const snap = JSON.parse(system.snapshot(lastActorId) || '{}');
+      const event = snap.value === 'off' ? 'ACTIVATE' : 'DEACTIVATE';
+      system.sendTo(lastActorId, JSON.stringify({ type: event }));
+      log('send', `Sent ${event} to "${lastActorId}"`);
+      const newSnap = JSON.parse(system.snapshot(lastActorId) || '{}');
+      log('state', `→ ${newSnap.value}`);
+    });
+
+    document.getElementById('stop-btn').addEventListener('click', () => {
+      if (!lastActorId) { log('stop', 'No actors to stop'); return; }
+      system.stop(lastActorId);
+      log('stop', `Stopped "${lastActorId}"`);
+      refreshActors();
+    });
+
+    document.getElementById('broadcast-btn').addEventListener('click', () => {
+      log('send', 'Broadcast not yet supported — send to each actor individually');
+    });
+
+    refreshActors();
+    log('state', 'Actor system ready. Click "Spawn Actor" to begin.');
+  }
+</script>
+</body>
+</html>

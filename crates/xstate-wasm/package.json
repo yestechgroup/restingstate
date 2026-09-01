@@ -1,0 +1,14 @@
+{
+  "name": "@restingstate/wasm",
+  "version": "0.1.0",
+  "description": "XState-compatible state machines in WebAssembly",
+  "main": "pkg/xstate_wasm.js",
+  "types": "pkg/xstate_wasm.d.ts",
+  "files": ["pkg/"],
+  "keywords": ["xstate", "wasm", "state-machine", "actor", "statechart"],
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yestechgroup/restingstate"
+  }
+}

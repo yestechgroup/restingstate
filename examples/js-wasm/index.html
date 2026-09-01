@@ -5,64 +5,137 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>restingstate WASM Demo</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
-  .machine { border: 2px solid #333; border-radius: 8px; padding: 1.5rem; }
+  body { font-family: system-ui, sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
+  .machine { border: 2px solid #333; border-radius: 8px; padding: 1.5rem; margin: 1rem 0; }
   .state { font-size: 2rem; font-weight: bold; margin: 1rem 0; }
-  .state.active { color: #22c55e; }
   .state.inactive { color: #6b7280; }
-  button { padding: 0.5rem 1.5rem; font-size: 1.1rem; cursor: pointer; }
+  .state.active { color: #22c55e; }
+  button { padding: 0.5rem 1.5rem; font-size: 1.1rem; cursor: pointer; margin-right: 0.5rem; }
   .context { font-family: monospace; background: #f3f4f6; padding: 0.5rem; border-radius: 4px; }
-  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 1rem; margin: 1rem 0; }
-  .code { background: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  .log { font-family: monospace; font-size: 0.85rem; background: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 4px; max-height: 200px; overflow-y: auto; }
+  .log-entry { margin: 0.2rem 0; }
+  .log-entry.event { color: #60a5fa; }
+  .log-entry.state { color: #34d399; }
+  h2 { margin-top: 2rem; }
+  #loading { color: #f59e0b; font-weight: bold; }
+  #app { display: none; }
 </style>
 </head>
 <body>
-<h1>restingstate — Browser (WASM)</h1>
+<h1>restingstate — Browser WASM</h1>
 
-<div class="note">
-  <strong>Note:</strong> WASM bindings are planned but not yet implemented.
-  This page shows the expected API. Once <code>wasm-bindgen</code> support is added,
-  the code in this page will work.
+<div id="loading">Loading WASM module...</div>
+<div id="app">
+  <h2>Toggle Machine</h2>
+  <div class="machine">
+    <div class="state inactive" id="state-display">inactive</div>
+    <button id="toggle-btn">TOGGLE</button>
+    <p class="context" id="context-display">Context: {}</p>
+  </div>
+  <p>Events sent: <span id="event-count">0</span></p>
+
+  <h2>Event Log</h2>
+  <div class="log" id="log"></div>
+
+  <h2>Usage</h2>
+  <pre style="background:#f3f4f6; padding:1rem; border-radius:4px; overflow-x:auto"><code>import init, { JsMachine } from './pkg/xstate_wasm.js';
+await init();
+
+const machine = new JsMachine(JSON.stringify({
+  id: "toggle", initial: "inactive",
+  context: { fields: [] },
+  states: [
+    { name: "inactive", transitions: [{ event: "TOGGLE", target: "active" }],
+      children: [], tags: [], entry: [], exit: [], on_done: [], output: null },
+    { name: "active", transitions: [{ event: "TOGGLE", target: "inactive" }],
+      children: [], tags: [], entry: [], exit: [], on_done: [], output: null }
+  ]
+}));
+
+machine.send(JSON.stringify({ type: "TOGGLE" }));
+console.log(JSON.parse(machine.snapshot()).value); // "active"</code></pre>
 </div>
 
-<h2>Toggle Machine Demo</h2>
-<div class="machine">
-  <div class="state inactive" id="state-display">inactive</div>
-  <button id="toggle-btn">TOGGLE</button>
-  <p class="context" id="context-display">Context: {"count": 0}</p>
-</div>
+<script type="module">
+  // This demo requires the WASM module to be built first:
+  //   cd crates/xstate-wasm && ./build.sh
+  // Then serve: npx serve ../../examples/js-wasm
 
-<p>Events sent: <span id="event-count">0</span></p>
+  let JsMachine;
 
-<h2>How it works</h2>
-<p>When WASM bindings are available, the JavaScript API matches the NAPI-RS API:</p>
+  try {
+    const wasm = await import('../../crates/xstate-wasm/pkg/xstate_wasm.js');
+    await wasm.default();
+    JsMachine = wasm.JsMachine;
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    runDemo();
+  } catch (e) {
+    document.getElementById('loading').textContent =
+      'WASM module not found. Build with: cd crates/xstate-wasm && ./build.sh';
+    console.error('Failed to load WASM:', e);
+  }
 
-<pre class="code"><code>// Load WASM module
-const wasm = await loadWasm('xstate_napi.wasm');
+  function runDemo() {
+    const machineIr = {
+      id: "toggle",
+      initial: "inactive",
+      context: { fields: [] },
+      states: [
+        {
+          name: "inactive",
+          transitions: [{ event: "TOGGLE", target: "active", actions: [], description: null, delay_ms: null, targets: [], guard: null }],
+          children: [], tags: [], entry: [], exit: [], on_done: [], output: null,
+          description: null, initial: null, invoke: null, type: "atomic"
+        },
+        {
+          name: "active",
+          transitions: [{ event: "TOGGLE", target: "inactive", actions: [], description: null, delay_ms: null, targets: [], guard: null }],
+          children: [], tags: [], entry: [], exit: [], on_done: [], output: null,
+          description: null, initial: null, invoke: null, type: "atomic"
+        }
+      ],
+      setup: null
+    };
 
-// Create machine from IR JSON
-const machine = new wasm.JsMachine(machineIrJson);
+    const machine = new JsMachine(JSON.stringify(machineIr));
+    let eventCount = 0;
 
-// Get current snapshot
-const snap = JSON.parse(machine.snapshot());
-console.log(snap.value, snap.context);
+    function updateUI() {
+      const snap = JSON.parse(machine.snapshot());
+      const stateEl = document.getElementById('state-display');
+      stateEl.textContent = snap.value;
+      stateEl.className = 'state ' + snap.value;
+      document.getElementById('context-display').textContent =
+        'Context: ' + JSON.stringify(snap.context);
+    }
 
-// Send events
-const result = machine.send(JSON.stringify({ type: 'TOGGLE' }));
-if (result) {
-  const newSnap = JSON.parse(result);
-  console.log(newSnap.value); // 'active'
-}</code></pre>
+    function log(type, msg) {
+      const logEl = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry ' + type;
+      entry.textContent = `[${type}] ${msg}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
 
-<h2>Build Instructions</h2>
-<pre class="code"><code># Build for WASM (requires wasm-bindgen — planned)
-cargo build -p xstate-napi --target wasm32-unknown-unknown
+    document.getElementById('toggle-btn').addEventListener('click', () => {
+      eventCount++;
+      document.getElementById('event-count').textContent = eventCount;
 
-# Package for web
-wasm-pack build crates/xstate-napi --target web
+      const snapBefore = JSON.parse(machine.snapshot());
+      log('event', `TOGGLE (state: ${snapBefore.value})`);
 
-# Serve
-npx serve examples/js-wasm</code></pre>
+      machine.send(JSON.stringify({ type: 'TOGGLE' }));
 
+      const snapAfter = JSON.parse(machine.snapshot());
+      log('state', `→ ${snapAfter.value}`);
+      updateUI();
+    });
+
+    updateUI();
+    log('state', `Initial: ${JSON.parse(machine.snapshot()).value}`);
+  }
+</script>
 </body>
 </html>
