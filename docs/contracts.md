@@ -103,8 +103,11 @@ transitions could fire eventlessly on the next microstep, ignoring the delay).
 - **Observability:** the fired transition is returned by the `send` that observed the deadline;
   `send` returns `Some(new_state)` only when the configuration changed.
 
-Compat note: `tests/compatibility/machines/after/*` vectors now compare against xstate.js under
-this semantics (see [#34](https://github.com/yestechgroup/restingstate/issues/34)).
+Compat note: `tests/compatibility/machines/after/*` vectors compare against xstate.js under
+this semantics (see [#34](https://github.com/yestechgroup/restingstate/issues/34)). The harness
+models time with the protocol's `advance_ms` field: ts-runner sleeps real timers (xstate.js
+`after` delays elapse), rust-runner advances its `MockClock` by the same amount, exercising the
+poll model — a due deadline is observed on the next `send`.
 
 `PersistError` (`interpreter.rs:156`): `MissingValue`, `UnsupportedVersion(u64)`,
 `InvalidStateValue(String)`, `InvalidHistory(String)`, `InvalidEntryTimes(String)`,

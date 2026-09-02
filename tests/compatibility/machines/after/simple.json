@@ -1,6 +1,5 @@
 {
   "machine_name": "afterTraffic",
-  "skip_compare": true,
   "machine_ir": {
     "id": "afterTraffic",
     "initial": "green",
@@ -37,17 +36,23 @@
     "initial": { "value": "green", "context": {} },
     "events": [
       { "type": "TICK" },
-      { "type": "TICK" }
+      { "type": "TICK", "advance_ms": 1100 },
+      { "type": "TICK", "advance_ms": 1100 }
     ]
   },
   "expected": [
     {
       "step": 0,
       "event": { "type": "TICK" },
-      "snapshot": { "value": "red", "context": {} }
+      "snapshot": { "value": "green", "context": {} }
     },
     {
       "step": 1,
+      "event": { "type": "TICK" },
+      "snapshot": { "value": "yellow", "context": {} }
+    },
+    {
+      "step": 2,
       "event": { "type": "TICK" },
       "snapshot": { "value": "red", "context": {} }
     }
