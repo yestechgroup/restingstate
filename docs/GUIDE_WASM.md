@@ -23,7 +23,7 @@ Open `http://localhost:3000` in your browser.
 The simplest API — wraps an XState interpreter for a single machine.
 
 ```javascript
-import init, { JsMachine } from '@yestechgroup/wasm';
+import init, { JsMachine } from 'restingstate';
 await init();
 
 const machine = new JsMachine(JSON.stringify({
@@ -67,7 +67,7 @@ console.log(machine.getContext());  // JSON string of context
 For running multiple actors with parent-child relationships.
 
 ```javascript
-import init, { JsActorSystem } from '@yestechgroup/wasm';
+import init, { JsActorSystem } from 'restingstate';
 await init();
 
 const system = new JsActorSystem();
@@ -96,7 +96,7 @@ console.log(system.len());              // 1
 Register JavaScript functions as guards and actions for machine transitions.
 
 ```javascript
-import init, { JsMachine, registerGuard, registerAction } from '@yestechgroup/wasm';
+import init, { JsMachine, registerGuard, registerAction } from 'restingstate';
 await init();
 
 // Register a guard function

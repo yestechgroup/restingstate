@@ -25,7 +25,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSy
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const PKG_NAME = '@yestechgroup/wasm';
+const PKG_NAME = 'restingstate';
 const PKG_DESCRIPTION = 'XState-compatible state machines in WebAssembly';
 const PKG_LICENSE = 'MIT OR Apache-2.0';
 const PKG_REPOSITORY_URL = 'https://github.com/yestechgroup/restingstate';

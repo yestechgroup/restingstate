@@ -212,7 +212,7 @@ jobs:
         if: steps.baseline.outputs.tag != ''
         uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
-          package: xstate-ir,xstate-core,xstate-parser,xstate-backend-native,xstate-actor,xstate-codegen,xstate-macro
+          package: xstate-ir,xstate-core,xstate-parser,xstate-backend-native,xstate-actor,xstate-codegen,xstate-macro,restingstate
           baseline-rev: ${{ steps.baseline.outputs.tag }}
           # Rust was already set up above from rust-toolchain.toml; don't re-install stable.
           rust-toolchain: manual
@@ -258,7 +258,7 @@ jobs:
         run: |
           set -u -o pipefail
           rc=0
-          for crate in xstate-ir xstate-core xstate-parser xstate-backend-native xstate-actor xstate-codegen xstate-macro; do
+          for crate in xstate-ir xstate-core xstate-parser xstate-backend-native xstate-actor xstate-codegen xstate-macro restingstate; do
             echo "::group::cargo publish --dry-run -p $crate"
             log="$(mktemp)"
             if cargo publish --dry-run --allow-dirty -p "$crate" 2>&1 | tee "$log"; then

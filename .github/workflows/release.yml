@@ -2,7 +2,7 @@ name: Release
 
 # Tag-driven release pipeline (issue #32). Pushing a `v*` tag produces both
 # distribution modes:
-#   * npm package `@yestechgroup/wasm` assembled from wasm-pack bundler+nodejs
+#   * npm package `restingstate` assembled from wasm-pack bundler+nodejs
 #     outputs by scripts/assemble-npm.mjs
 #   * ordered crates.io publishes: ir → core → parser → backend-native →
 #     actor → codegen → macro
@@ -115,7 +115,7 @@ jobs:
         run: |
           set -u -o pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          crates="xstate-ir xstate-core xstate-parser xstate-backend-native xstate-actor xstate-codegen xstate-macro"
+          crates="xstate-ir xstate-core xstate-parser xstate-backend-native xstate-actor xstate-codegen xstate-macro restingstate"
           for crate in $crates; do
             echo "::group::$crate — dry-run gate"
             ok=0
@@ -250,8 +250,8 @@ jobs:
             echo
             echo "## Artifacts"
             echo
-            echo "- npm: \`@yestechgroup/wasm@$VERSION\` (tarball attached)"
-            echo "- crates.io: xstate-ir, xstate-core, xstate-parser, xstate-backend-native, xstate-actor, xstate-codegen, xstate-macro"
+            echo "- npm: \`restingstate@$VERSION\` (tarball attached)"
+            echo "- crates.io: xstate-ir, xstate-core, xstate-parser, xstate-backend-native, xstate-actor, xstate-codegen, xstate-macro, restingstate"
             echo
             echo "WASM binary sizes:"
             echo

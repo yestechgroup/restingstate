@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added (release engineering, #32)
 
 - Tag-driven release pipeline (`.github/workflows/release.yml`): wasm-pack npm
-  assembly via `scripts/assemble-npm.mjs` (`@yestechgroup/wasm`), ordered
+  assembly via `scripts/assemble-npm.mjs` (`restingstate`), ordered
   crates.io publishes (ir → core → parser → backend-native → actor → codegen →
   macro), and a GitHub Release with tarball, wasm sizes and compatibility
   summary

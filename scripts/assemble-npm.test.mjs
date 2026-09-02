@@ -128,7 +128,7 @@ test('generated package.json has license, repository (yestechgroup), engines.nod
 
   const { packageJson } = assembleNpm({ version: '0.2.0', bundler, node, out: join(root, 'dist-npm') });
 
-  assert.equal(packageJson.name, '@yestechgroup/wasm');
+  assert.equal(packageJson.name, 'restingstate');
   assert.equal(packageJson.license, 'MIT OR Apache-2.0');
   assert.deepEqual(packageJson.repository, { type: 'git', url: 'https://github.com/yestechgroup/restingstate' });
   assert.deepEqual(packageJson.engines, { node: '>=18' });
