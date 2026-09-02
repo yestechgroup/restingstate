@@ -53,6 +53,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # xstate-vendor submodule supplies the upstream test sources the
+          # extractor consumes; without it the extraction step has nothing
+          # to run and fails.
+          submodules: recursive
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 

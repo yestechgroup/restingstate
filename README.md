@@ -2,7 +2,7 @@
 
 | Status | Crate | Crate |
 |--------|-------|-------|
-| 205 tests pass | 25 hand-crafted + 34 extracted compatibility vectors | `.ts` → parser → IR → codegen → native / WASM / NAPI |
+| 350+ tests pass | 25 hand-crafted + 31 faithfulness-guarded extracted compatibility vectors | `.ts` → parser → IR → codegen → native / WASM / NAPI |
 
 ## 1. Project Overview
 
@@ -238,7 +238,7 @@ cargo run -p rust-runner -- tests/compatibility/machines/simple/toggle.json > rs
 node tests/compatibility/compare.mjs js-out.json rs-out.json
 ```
 
-**Current status: 25 hand-crafted + 34 extracted vectors pass** against the xstate.js reference implementation.
+**Current status: 25 hand-crafted + 31 extracted vectors pass** against the xstate.js reference implementation. Extracted vectors are faithfulness-guarded (config/IR and initial-state checks) at generation time.
 
 The xstate.js source is vendored as a git submodule at `tests/compatibility/xstate-vendor/` (pinned to a specific commit). Test vectors are derived from xstate.js test files without modifying them. Each vector maps a subset of xstate.js behavior that our runtime is expected to match.
 
