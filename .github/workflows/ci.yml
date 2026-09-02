@@ -60,7 +60,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install JS deps
+      - name: Install JS deps (root)
+        # ts-runner.mjs imports xstate as a bare specifier; Node resolves it by
+        # walking up from tests/compatibility/ to the root node_modules, which is
+        # pinned by the committed root package-lock.json.
+        run: npm ci
+
+      - name: Install JS deps (packages)
         run: |
           npm ci
           npm install xstate@5
