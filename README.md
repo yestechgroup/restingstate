@@ -339,7 +339,7 @@ GitHub Release. See [CHANGELOG.md](CHANGELOG.md) and the
 
 ```toml
 [dependencies]
-restingstate = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
+restingstate = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.1" }
 ```
 
 The umbrella crate re-exports the full public surface (`prelude`, Interpreter,

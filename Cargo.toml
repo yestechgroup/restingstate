@@ -11,13 +11,13 @@ categories = ["rust-patterns", "concurrency", "development-tools"]
 readme = "README.md"
 
 [dependencies]
-xstate-core = { path = "crates/xstate-core", version = "0.2.0" }
-xstate-ir = { path = "crates/xstate-ir", version = "0.2.0" }
-xstate-parser = { path = "crates/xstate-parser", version = "0.2.0" }
-xstate-backend-native = { path = "crates/xstate-backend-native", version = "0.2.0" }
-xstate-actor = { path = "crates/xstate-actor", version = "0.2.0" }
-xstate-codegen = { path = "crates/xstate-codegen", version = "0.2.0" }
-xstate-macro = { path = "crates/xstate-macro", version = "0.2.0" }
+xstate-core = { path = "crates/xstate-core", version = "0.2.1" }
+xstate-ir = { path = "crates/xstate-ir", version = "0.2.1" }
+xstate-parser = { path = "crates/xstate-parser", version = "0.2.1" }
+xstate-backend-native = { path = "crates/xstate-backend-native", version = "0.2.1" }
+xstate-actor = { path = "crates/xstate-actor", version = "0.2.1" }
+xstate-codegen = { path = "crates/xstate-codegen", version = "0.2.1" }
+xstate-macro = { path = "crates/xstate-macro", version = "0.2.1" }
 
 [dev-dependencies]
 serde_json.workspace = true
@@ -43,7 +43,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.97"
 license = "MIT OR Apache-2.0"

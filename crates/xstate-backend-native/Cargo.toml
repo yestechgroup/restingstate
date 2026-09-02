@@ -14,6 +14,6 @@ default = ["async"]
 async = ["xstate-core/async"]
 
 [dependencies]
-xstate-core = { path = "../xstate-core", version = "0.2.0", default-features = false }
-xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
+xstate-core = { path = "../xstate-core", version = "0.2.1", default-features = false }
+xstate-ir = { path = "../xstate-ir", version = "0.2.1" }
 serde_json.workspace = true

@@ -10,7 +10,7 @@ keywords = ["xstate", "typescript", "parser", "statechart", "oxc"]
 categories = ["parser-implementations"]
 
 [dependencies]
-xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
+xstate-ir = { path = "../xstate-ir", version = "0.2.1" }
 oxc_parser.workspace = true
 oxc_allocator.workspace = true
 oxc_span.workspace = true

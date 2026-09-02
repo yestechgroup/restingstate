@@ -22,14 +22,16 @@
 //     intermediate artifacts, so they are stripped.
 
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const PKG_NAME = 'restingstate';
 const PKG_DESCRIPTION = 'XState-compatible state machines in WebAssembly';
 const PKG_LICENSE = 'MIT OR Apache-2.0';
 const PKG_REPOSITORY_URL = 'https://github.com/yestechgroup/restingstate';
 const PKG_KEYWORDS = ['xstate', 'wasm', 'state-machine', 'actor', 'statechart'];
+// README shipped in the tarball — npm renders the package page from it.
+const NPM_README_SRC = join(dirname(fileURLToPath(import.meta.url)), 'npm-README.md');
 
 const ENTRY_JS = 'xstate_wasm.js';
 const ENTRY_BG_WASM = 'xstate_wasm_bg.wasm';
@@ -93,6 +95,7 @@ export function assembleNpm(options) {
   if (!node) throw new Error('missing --node\n\n' + USAGE);
   if (!SEMVER_RE.test(version)) throw new Error(`invalid --version '${version}' (expected semver, e.g. 0.2.0)`);
 
+  if (!existsSync(NPM_README_SRC)) throw new Error(`npm README not found: ${NPM_README_SRC}`);
   requirePkgDir('bundler', bundler);
   requirePkgDir('node', node);
   if (existsSync(out) && !statSync(out).isDirectory()) {
@@ -105,6 +108,9 @@ export function assembleNpm(options) {
 
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
+
+  const readmeDest = join(out, 'README.md');
+  cpSync(NPM_README_SRC, readmeDest);
 
   const bundlerDest = join(out, 'pkg-bundler');
   const nodeDest = join(out, 'pkg-node');

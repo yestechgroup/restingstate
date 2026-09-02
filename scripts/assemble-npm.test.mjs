@@ -182,6 +182,18 @@ test('rejects missing inputs: absent dirs, incomplete wasm-pack output, missing/
   );
 });
 
+test('README.md is shipped in the tarball (npm renders the package page from it)', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'assemble-npm-readme-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const { bundler, node } = makeFixture(join(root, 'in'));
+
+  const { outDir } = assembleNpm({ version: '0.2.0', bundler, node, out: join(root, 'dist-npm') });
+
+  const readme = readFileSync(join(outDir, 'README.md'), 'utf8');
+  assert.ok(readme.includes('# restingstate'), 'README has the package title');
+  assert.ok(readme.includes('npm install restingstate'), 'README has install instructions');
+});
+
 test('reruns are idempotent: a previous out dir is replaced wholesale', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'assemble-npm-idem-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - unreleased
+
+### Added
+- npm package now ships a README (rendered on npmjs.com) via `scripts/npm-README.md`
+- `restingstate` umbrella crate (workspace root): re-exports all seven public
+  crates plus a `prelude` module — the one-name dependency for downstreams
+
+### Changed
+- npm identity renamed `@yestechgroup/wasm` → **`restingstate`** (unscoped;
+  `@yestechgroup/wasm@0.2.0` unpublished) — `npm install restingstate`
+- Version alignment: npm and crates.io releases now share the workspace version;
+  `v0.2.1` is the first release tag containing both
+
 ## [0.2.0] - unreleased
 
 ### Added

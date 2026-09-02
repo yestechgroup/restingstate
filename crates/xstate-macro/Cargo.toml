@@ -13,9 +13,9 @@ categories = ["rust-patterns"]
 proc-macro = true
 
 [dependencies]
-xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
-xstate-parser = { path = "../xstate-parser", version = "0.2.0" }
-xstate-codegen = { path = "../xstate-codegen", version = "0.2.0" }
+xstate-ir = { path = "../xstate-ir", version = "0.2.1" }
+xstate-parser = { path = "../xstate-parser", version = "0.2.1" }
+xstate-codegen = { path = "../xstate-codegen", version = "0.2.1" }
 syn.workspace = true
 quote.workspace = true
 proc-macro2.workspace = true
