@@ -23,6 +23,7 @@ cargo bench -p xstate-bench  # Run Criterion benchmarks
 | `xstate-codegen` | `quote`/`syn` Rust code generator (IR → Rust source) | `xstate-ir` |
 | `xstate-macro` | `#[xstate("path.ts")]` proc macro | `xstate-ir`, `xstate-parser`, `xstate-codegen` |
 | `xstate-napi` | Node.js native bindings | `xstate-core` |
+| `restingstate` (workspace root) | Umbrella crate: re-exports the public crates (`prelude` included) — the one-name dependency for downstreams | all public crates |
 | `xstate-actor` | Async actor system (Tokio, spawn, send_to, send_parent) | `xstate-core`, `tokio` |
 | `xstate-backend-native` | Single-threaded WASM-compatible actor system | `xstate-core` |
 | `xstate-wasm` | WASM bindings (JsMachine, JsActorSystem, JS guard/action callbacks) | `xstate-core`, `xstate-backend-native`, `wasm-bindgen` |
@@ -191,7 +192,7 @@ wasm-pack build crates/xstate-wasm --target web
 ### JavaScript API
 
 ```javascript
-import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from '@yestechgroup/wasm';
+import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from 'restingstate';
 await init();
 
 // Single machine

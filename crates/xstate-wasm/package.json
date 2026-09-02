@@ -1,5 +1,5 @@
 {
-  "name": "@yestechgroup/wasm",
+  "name": "restingstate",
   "version": "0.2.0",
   "description": "XState-compatible state machines in WebAssembly",
   "main": "pkg/xstate_wasm.js",

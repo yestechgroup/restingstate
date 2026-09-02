@@ -1,3 +1,27 @@
+[package]
+name = "restingstate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "XState-compatible statechart compiler and runtime for Rust: parse TypeScript machines, interpret them, and run them as actors."
+keywords = ["xstate", "statechart", "state-machine", "actor", "interpreter"]
+categories = ["rust-patterns", "concurrency", "development-tools"]
+readme = "README.md"
+
+[dependencies]
+xstate-core = { path = "crates/xstate-core", version = "0.2.0" }
+xstate-ir = { path = "crates/xstate-ir", version = "0.2.0" }
+xstate-parser = { path = "crates/xstate-parser", version = "0.2.0" }
+xstate-backend-native = { path = "crates/xstate-backend-native", version = "0.2.0" }
+xstate-actor = { path = "crates/xstate-actor", version = "0.2.0" }
+xstate-codegen = { path = "crates/xstate-codegen", version = "0.2.0" }
+xstate-macro = { path = "crates/xstate-macro", version = "0.2.0" }
+
+[dev-dependencies]
+serde_json.workspace = true
+
 [workspace]
 resolver = "2"
 members = [

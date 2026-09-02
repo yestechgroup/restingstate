@@ -14,9 +14,9 @@ Per the epic's crate split:
 
 | Tier | Crates | Promise |
 |---|---|---|
-| **Public / stable** | `xstate-ir`, `xstate-core`, `xstate-parser`, `xstate-backend-native`, `xstate-actor` | Semver-enforced. Breaking changes require a version bump and a release-notes notice. |
+| **Public / stable** | `restingstate` (umbrella), `xstate-ir`, `xstate-core`, `xstate-parser`, `xstate-backend-native`, `xstate-actor` | Semver-enforced. Breaking changes require a version bump and a release-notes notice. |
 | **Public / beta** | `xstate-macro`, `xstate-codegen` | Consumable, but scoped to simple flat FSMs (see [runtime-paths.md](runtime-paths.md)). Breaking changes may land in minor releases; they will be called out in release notes. |
-| **Internal** (`publish = false`) | `xstate-wasm`, `xstate-napi`, `xstate-bench`, `rust-runner`, `examples/*`, `xstate-macro-test` | No stability promise. Consume `xstate-wasm` through the `@yestechgroup/wasm` npm package instead. |
+| **Internal** (`publish = false`) | `xstate-wasm`, `xstate-napi`, `xstate-bench`, `rust-runner`, `examples/*`, `xstate-macro-test` | No stability promise. Consume `xstate-wasm` through the `restingstate` npm package instead. |
 
 - **Semver policy:** the workspace ships a single version (`workspace.package`). Until 1.0,
   breaking changes to stable crates bump the minor version; additive changes bump the patch.
@@ -340,15 +340,24 @@ literal assignment: `args = [key1, value1, key2, value2, ...]`. Pins:
   `{"value","context"}` shape and this envelope (pin:
   `machine_logic_persisted_round_trip_shape_is_pinned`).
 
-## JavaScript API (WASM, `@yestechgroup/wasm`)
+## JavaScript API (WASM, `restingstate`)
 
 Built from `crates/xstate-wasm` (wasm-bindgen). All values cross the boundary as **JSON strings**;
 guard/action callbacks receive **JS objects** (not strings).
 
 ```javascript
+// Bundlers (browser): named imports resolve to the native-ESM build.
 import init, { JsMachine, JsActorSystem, registerGuard, registerAction, clearRegistry }
-  from '@yestechgroup/wasm';
+  from 'restingstate';
 await init();
+
+// Node: the "node" export condition resolves to the CommonJS glue, where
+// named ESM imports are not statically detectable — use default-import
+// (or require). Both conditions expose the identical API surface.
+import wasm from 'restingstate';
+await wasm.init();
+const { JsMachine } = wasm;
+```
 
 // Single machine (crates/xstate-wasm/src/lib.rs:117)
 const machine = new JsMachine(machineIrJson);        // xstate-ir Machine JSON
@@ -398,7 +407,7 @@ generated with `schemars` from the `xstate-ir` types).
   `Interpreter::validate_machine` (`ValidateError::Invalid`): initial resolvability,
   compound initial children, and transition-target existence (dotted targets are
   root-anchored, bare names resolve anywhere in the tree — mirroring `build_target`).
-- **WASM validation:** `validateMachine(machineIrJson)` from `@yestechgroup/wasm`
+- **WASM validation:** `validateMachine(machineIrJson)` from `restingstate`
   (`crates/xstate-wasm/src/lib.rs`) returns `"ok"` or a rejecting error message using
   the same checks.
 - **Sweep:** every hand-crafted compatibility vector's `machine_ir` is asserted to

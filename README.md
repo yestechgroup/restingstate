@@ -151,7 +151,7 @@ cd crates/xstate-wasm && ./build.sh
 ```
 
 ```javascript
-import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from '@yestechgroup/wasm';
+import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from 'restingstate';
 await init();
 
 // Single machine
@@ -339,13 +339,17 @@ GitHub Release. See [CHANGELOG.md](CHANGELOG.md) and the
 
 ```toml
 [dependencies]
-xstate-core = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
+restingstate = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
 ```
 
-**npm** — the WASM build ships as [`@yestechgroup/wasm`](https://www.npmjs.com/package/@yestechgroup/wasm):
+The umbrella crate re-exports the full public surface (`prelude`, Interpreter,
+registries, actor backends, IR); individual crates (`xstate-core`,
+`xstate-parser`, …) are also dependable directly.
+
+**npm** — the WASM build ships as [`restingstate`](https://www.npmjs.com/package/restingstate):
 
 ```bash
-npm install @yestechgroup/wasm
+npm install restingstate
 ```
 
 ## Embedding

@@ -14,7 +14,7 @@ below use only Interpreter-path APIs.
 | Mode | Artifact | Good for |
 |---|---|---|
 | **A: Rust** | `xstate-core` + `xstate-parser` + `xstate-backend-native` via Cargo git tag | Native Rust hosts, embedded/edge targets |
-| **B: JS/WASM** | `@yestechgroup/wasm` npm package (or the wasm pkg from Release assets) | Node and browser hosts, JS/TS apps |
+| **B: JS/WASM** | `restingstate` npm package (or the wasm pkg from Release assets) | Node and browser hosts, JS/TS apps |
 
 ---
 
@@ -24,6 +24,9 @@ below use only Interpreter-path APIs.
 
 ```toml
 [dependencies]
+# Umbrella crate — one dependency, full public surface (prelude included):
+restingstate          = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
+# …or the individual crates directly:
 xstate-core           = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
 xstate-ir             = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
 xstate-parser         = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
@@ -138,7 +141,7 @@ Run it: `cargo test -p embed` (or `cargo run -p embed`).
 Install the npm package published with each `vX.Y.Z` release:
 
 ```bash
-npm install @yestechgroup/wasm
+npm install restingstate
 ```
 
 …or build the nodejs-target package from source (exact commands, `wasm-bindgen` CLI
@@ -159,7 +162,7 @@ The `--target nodejs` output is CommonJS; an ESM demo loads it with
 
 ```javascript
 import init, { validateMachine, JsMachine, JsActorSystem, registerGuard, registerAction }
-  from '@yestechgroup/wasm';
+  from 'restingstate';
 await init();
 
 // Same checks as validate_machine_json in Rust — run before any spawn.
