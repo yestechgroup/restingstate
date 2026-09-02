@@ -74,6 +74,38 @@ Interpreter::send_with_registry(
 The event object must carry a `"type"` string. `Clock` is `fn now_ms(&self) -> u64`
 (`crates/xstate-core/src/clock.rs:1`) with `MockClock`, `InstantClock` (native), and `WasmClock` implementations.
 
+### Delayed transitions (`after`) — exact semantics
+
+Pinned by `crates/xstate-core/tests/after_parity.rs`; fixed in
+[#34](https://github.com/yestechgroup/restingstate/issues/34) (before the fix, delayed
+transitions could fire eventlessly on the next microstep, ignoring the delay).
+
+- **Deadline math:** `deadline = entered_at(source state node) + delay_ms`, both in the units of
+  the injected `Clock`. `entry_times` is recorded on entry (initial entry counts as `t=0` on the
+  `Clock`) and is part of the persisted snapshot (see [#22](https://github.com/yestechgroup/restingstate/issues/22)).
+- **Poll model — no real-time scheduling:** `after` fires on the **first `send` whose `Clock`
+  reading is at or past the deadline**. Nothing fires between sends; hosts that need wall-clock
+  `after` must drive sends (or a timer that sends a tick event).
+- **Never eventless, never direct:** a transition with `delay_ms` never matches in
+  `send_along_path` — not via the eventless (`always`/`resolve_always`) path and not when its
+  (named) event is sent directly. `resolve_after` is the sole firer and re-checks guards at fire
+  time; a false guard leaves the machine unchanged and the transition is retried on later sends.
+- **Early events do not fire it:** an event handled while `now < deadline` leaves the machine
+  unchanged with respect to the pending `after`.
+- **Exit cancels permanently:** leaving the source state before the deadline discards its
+  pending `after`; it never fires later from another state.
+- **Re-entry resets the deadline:** re-entering the source state (including an external
+  self-target transition, e.g. `on: { STAY: 'green' }` on `green`) restarts the countdown.
+  An `after` targeting its own state re-arms itself the same way.
+- **Deepest-first when multiple are due:** if several `after` deadlines are due in the same
+  resolve, the active path is walked leaf-first, so the deepest state's transition fires first;
+  ancestors' pending `after`s are cancelled if the deeper fire exits them.
+- **Observability:** the fired transition is returned by the `send` that observed the deadline;
+  `send` returns `Some(new_state)` only when the configuration changed.
+
+Compat note: `tests/compatibility/machines/after/*` vectors now compare against xstate.js under
+this semantics (see [#34](https://github.com/yestechgroup/restingstate/issues/34)).
+
 `PersistError` (`interpreter.rs:156`): `MissingValue`, `UnsupportedVersion(u64)`,
 `InvalidStateValue(String)`, `InvalidHistory(String)`, `InvalidEntryTimes(String)`,
 `HistoryTargetInvalid(String)`. Restore validates state values against the machine before accepting them.

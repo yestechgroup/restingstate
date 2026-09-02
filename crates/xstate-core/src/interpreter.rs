@@ -646,6 +646,16 @@ impl Interpreter {
                         }
                         self.entry_times.borrow_mut().insert(n.name.clone(), now);
                     }
+                    // #34: a self-target re-enters its source (nothing new
+                    // is entered, so the loop above skips it) — reset entry
+                    // times from the source down to re-arm after-deadlines.
+                    if common_prefix == target_path.len()
+                        && let Some(src_idx) = path.iter().position(|n| std::ptr::eq(*n, *node))
+                    {
+                        for n in &path[src_idx..] {
+                            self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                        }
+                    }
                     return Some(target_value);
                 }
             }
@@ -1160,6 +1170,12 @@ impl Interpreter {
                 continue;
             }
             for transition in &node.transitions {
+                // #34: delayed transitions fire only via resolve_after's
+                // deadline check — never eventlessly and never via a named
+                // event (resolve_after matches them regardless of event name).
+                if transition.delay_ms.is_some() {
+                    continue;
+                }
                 if transition.event != event {
                     continue;
                 }
@@ -1244,6 +1260,16 @@ impl Interpreter {
                     let now = clock.now_ms();
                     for n in &target_path[common_prefix..] {
                         self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                    }
+                    // #34: a self-target re-enters its source (nothing new
+                    // is entered, so the loop above skips it) — reset entry
+                    // times from the source down to re-arm after-deadlines.
+                    if common_prefix == target_path.len()
+                        && let Some(src_idx) = path.iter().position(|n| std::ptr::eq(*n, *node))
+                    {
+                        for n in &path[src_idx..] {
+                            self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                        }
                     }
 
                     for n in path[common_prefix..].iter().rev() {
