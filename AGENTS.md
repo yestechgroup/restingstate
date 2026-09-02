@@ -191,7 +191,7 @@ wasm-pack build crates/xstate-wasm --target web
 ### JavaScript API
 
 ```javascript
-import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from '@restingstate/wasm';
+import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from '@yestechgroup/wasm';
 await init();
 
 // Single machine

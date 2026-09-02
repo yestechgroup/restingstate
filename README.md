@@ -151,7 +151,7 @@ cd crates/xstate-wasm && ./build.sh
 ```
 
 ```javascript
-import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from '@restingstate/wasm';
+import init, { JsMachine, JsActorSystem, registerGuard, registerAction } from '@yestechgroup/wasm';
 await init();
 
 // Single machine
@@ -342,10 +342,10 @@ GitHub Release. See [CHANGELOG.md](CHANGELOG.md) and the
 xstate-core = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
 ```
 
-**npm** — the WASM build ships as [`@restingstate/wasm`](https://www.npmjs.com/package/@restingstate/wasm):
+**npm** — the WASM build ships as [`@yestechgroup/wasm`](https://www.npmjs.com/package/@yestechgroup/wasm):
 
 ```bash
-npm install @restingstate/wasm
+npm install @yestechgroup/wasm
 ```
 
 ## Embedding
