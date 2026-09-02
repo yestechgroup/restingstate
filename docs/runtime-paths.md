@@ -16,8 +16,10 @@ implement wildly different subsets of XState semantics:
    `GuardRegistry`/`ActionRegistry` (`crates/xstate-core/src/guards.rs:29`,
    `crates/xstate-core/src/actions.rs:33`, plumbed through `MachineLogic::new_with_registries`,
    `crates/xstate-core/src/actor_logic.rs:76` and `Interpreter::send_with_registry`,
-   `crates/xstate-core/src/interpreter.rs:506`), polls `after` deadlines against the `Clock`
-   trait (`crates/xstate-core/src/clock.rs:1`), and supports versioned persistence including
+   `crates/xstate-core/src/interpreter.rs:506`),    polls `after` deadlines against the `Clock`
+   trait (`crates/xstate-core/src/clock.rs:1`; deadline-gated poll model, never eventless —
+   exact semantics in [contracts.md](contracts.md#delayed-transitions-after--exact-semantics)),
+   and supports versioned persistence including
    history and after deadlines (`Interpreter::persisted_snapshot` / `restore_persisted`,
    `crates/xstate-core/src/interpreter.rs:283-299`). Invoked and spawned actors are supported on
    this path through the actor backends (Tokio via `xstate-actor`, single-threaded via

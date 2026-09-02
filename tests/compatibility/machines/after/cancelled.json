@@ -33,12 +33,18 @@
   "protocol": {
     "initial": { "value": "waiting", "context": {} },
     "events": [
-      { "type": "BUTTON" }
+      { "type": "BUTTON" },
+      { "type": "BUTTON", "advance_ms": 0 }
     ]
   },
   "expected": [
     {
       "step": 0,
+      "event": { "type": "BUTTON" },
+      "snapshot": { "value": "success", "context": {} }
+    },
+    {
+      "step": 1,
       "event": { "type": "BUTTON" },
       "snapshot": { "value": "success", "context": {} }
     }
