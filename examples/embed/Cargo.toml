@@ -1,0 +1,17 @@
+[package]
+name = "embed"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.97"
+publish = false
+
+[dependencies]
+xstate-backend-native = { path = "../../crates/xstate-backend-native" }
+xstate-core = { path = "../../crates/xstate-core" }
+xstate-ir = { path = "../../crates/xstate-ir" }
+xstate-parser = { path = "../../crates/xstate-parser" }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "embed"
+path = "src/main.rs"

@@ -1,0 +1,451 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Machine",
+  "type": "object",
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/ContextSchema"
+    },
+    "id": {
+      "type": "string"
+    },
+    "initial": {
+      "type": "string"
+    },
+    "setup": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SetupConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "states": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/StateNode"
+      }
+    }
+  },
+  "required": [
+    "id",
+    "initial",
+    "context",
+    "states"
+  ],
+  "$defs": {
+    "Action": {
+      "type": "object",
+      "properties": {
+        "args": {
+          "type": "array",
+          "default": [],
+          "items": true
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "ActionDef": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "params": {
+          "type": "array",
+          "default": [],
+          "items": true
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "ActorDef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "FromActorLogic": {
+              "type": "object",
+              "properties": {
+                "src": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "src"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "FromActorLogic"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "FromPromise": {
+              "type": "object",
+              "properties": {
+                "src": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "src"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "FromPromise"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "FromCallback": {
+              "type": "object",
+              "properties": {
+                "src": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "src"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "FromCallback"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "FromMachine": {
+              "type": "object",
+              "properties": {
+                "machine_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "machine_id"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "FromMachine"
+          ]
+        }
+      ]
+    },
+    "ContextField": {
+      "type": "object",
+      "properties": {
+        "default_value": true,
+        "name": {
+          "type": "string"
+        },
+        "type_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type_name",
+        "default_value"
+      ]
+    },
+    "ContextSchema": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ContextField"
+          }
+        }
+      },
+      "required": [
+        "fields"
+      ]
+    },
+    "Guard": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "GuardDef": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "params": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuardParam"
+          }
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "GuardParam": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "Literal": true
+          },
+          "additionalProperties": false,
+          "required": [
+            "Literal"
+          ]
+        }
+      ]
+    },
+    "InvokeConfig": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "on_done": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Transition"
+          }
+        },
+        "on_error": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Transition"
+          }
+        },
+        "src": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "src"
+      ]
+    },
+    "SetupConfig": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ActionDef"
+          },
+          "default": {}
+        },
+        "actors": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ActorDef"
+          },
+          "default": {}
+        },
+        "delays": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "default": {}
+        },
+        "guards": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/GuardDef"
+          },
+          "default": {}
+        }
+      }
+    },
+    "StateNode": {
+      "type": "object",
+      "properties": {
+        "children": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StateNode"
+          }
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entry": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "exit": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "initial": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "invoke": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InvokeConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "type": "string"
+        },
+        "on_done": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Transition"
+          }
+        },
+        "output": {
+          "default": null
+        },
+        "tags": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Transition"
+          }
+        },
+        "type": {
+          "$ref": "#/$defs/StateType",
+          "default": "atomic"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "StateType": {
+      "type": "string",
+      "enum": [
+        "atomic",
+        "compound",
+        "parallel",
+        "final",
+        "history",
+        "deephistory"
+      ]
+    },
+    "Transition": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Action"
+          }
+        },
+        "delay_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "event": {
+          "type": "string"
+        },
+        "guard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Guard"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "targets": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "event"
+      ]
+    }
+  }
+}

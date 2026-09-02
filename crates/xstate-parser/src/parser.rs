@@ -13,6 +13,7 @@ use xstate_ir::{
 };
 
 pub fn parse(source: &str) -> Result<Machine, ParseError> {
+    check_nesting_depth(source)?;
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, source, SourceType::ts()).parse();
 
@@ -26,6 +27,7 @@ pub fn parse(source: &str) -> Result<Machine, ParseError> {
 /// Parse a TypeScript source and return ALL machines found in it.
 /// Unlike `parse()`, this does not stop at the first createMachine call.
 pub fn parse_all(source: &str) -> Result<Vec<Machine>, ParseError> {
+    check_nesting_depth(source)?;
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, source, SourceType::ts()).parse();
 
@@ -34,6 +36,93 @@ pub fn parse_all(source: &str) -> Result<Vec<Machine>, ParseError> {
     }
 
     collect_all_machines(&ret.program)
+}
+
+// Issue #29: the recursive-descent parser (and our AST walkers) overflow the
+// stack on pathological nesting, so cap bracket depth before parsing.
+const MAX_SOURCE_NESTING_DEPTH: usize = 512;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScanState {
+    Code,
+    LineComment,
+    BlockComment,
+    SingleQuoted,
+    DoubleQuoted,
+    Template,
+}
+
+fn check_nesting_depth(source: &str) -> Result<(), ParseError> {
+    let bytes = source.as_bytes();
+    let mut depth: usize = 0;
+    let mut template_frames: Vec<ScanState> = Vec::new();
+    let mut state = ScanState::Code;
+    let mut i = 0;
+
+    while i < bytes.len() {
+        let byte = bytes[i];
+        i += 1;
+        match state {
+            ScanState::Code => match byte {
+                b'/' if bytes.get(i) == Some(&b'/') => {
+                    state = ScanState::LineComment;
+                    i += 1;
+                }
+                b'/' if bytes.get(i) == Some(&b'*') => {
+                    state = ScanState::BlockComment;
+                    i += 1;
+                }
+                b'\'' => state = ScanState::SingleQuoted,
+                b'"' => state = ScanState::DoubleQuoted,
+                b'`' => state = ScanState::Template,
+                b'{' | b'[' | b'(' => {
+                    depth += 1;
+                    if depth > MAX_SOURCE_NESTING_DEPTH {
+                        return Err(ParseError::NestingTooDeep(MAX_SOURCE_NESTING_DEPTH));
+                    }
+                }
+                b'}' if template_frames.last() == Some(&ScanState::Template) => {
+                    template_frames.pop();
+                    state = ScanState::Template;
+                }
+                b'}' | b']' | b')' => depth = depth.saturating_sub(1),
+                _ => {}
+            },
+            ScanState::LineComment => {
+                if byte == b'\n' {
+                    state = ScanState::Code;
+                }
+            }
+            ScanState::BlockComment => {
+                if byte == b'*' && bytes.get(i) == Some(&b'/') {
+                    state = ScanState::Code;
+                    i += 1;
+                }
+            }
+            ScanState::SingleQuoted => match byte {
+                b'\\' => i += 1,
+                b'\'' | b'\n' => state = ScanState::Code,
+                _ => {}
+            },
+            ScanState::DoubleQuoted => match byte {
+                b'\\' => i += 1,
+                b'"' | b'\n' => state = ScanState::Code,
+                _ => {}
+            },
+            ScanState::Template => match byte {
+                b'\\' => i += 1,
+                b'`' => state = ScanState::Code,
+                b'$' if bytes.get(i) == Some(&b'{') => {
+                    template_frames.push(ScanState::Template);
+                    state = ScanState::Code;
+                    i += 1;
+                }
+                _ => {}
+            },
+        }
+    }
+
+    Ok(())
 }
 
 fn collect_all_machines(program: &Program) -> Result<Vec<Machine>, ParseError> {

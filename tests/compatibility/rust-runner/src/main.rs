@@ -34,6 +34,8 @@ struct InitialSnapshot {
 struct Event {
     #[serde(rename = "type")]
     event_type: String,
+    #[serde(default)]
+    advance_ms: Option<u64>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -86,7 +88,7 @@ fn main() {
     });
 
     let interpreter = Interpreter::new(test_vector.machine_ir);
-    let clock = MockClock::new(100000);
+    let mut clock = MockClock::new(0);
 
     let initial_state = interpreter.initial_state();
     let initial_context = interpreter.initial_context();
@@ -116,6 +118,11 @@ fn main() {
     let mut outputs: Vec<RunnerOutput> = Vec::new();
 
     for (i, event) in test_vector.protocol.events.iter().enumerate() {
+        // Harness control field: advance the mock clock before dispatching so
+        // polled `after` deadlines become due (mirrors ts-runner's real sleep).
+        if let Some(ms) = event.advance_ms {
+            clock.advance(ms);
+        }
         let mut event_value = serde_json::json!({"type": event.event_type});
         if let Some(obj) = event_value.as_object_mut() {
             for (k, v) in &event.extra {

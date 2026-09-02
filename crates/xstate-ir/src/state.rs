@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::transition::Transition;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct InvokeConfig {
     pub src: String,
     #[serde(default)]
@@ -14,6 +15,7 @@ pub struct InvokeConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct StateNode {
     pub name: String,
     pub description: Option<String>,
@@ -40,6 +42,7 @@ pub struct StateNode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum StateType {
     #[default]

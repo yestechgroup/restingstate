@@ -4,10 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Tokio-based async actor system for running xstate-core machines as concurrent actors."
+readme = "README.md"
+keywords = ["xstate", "actor", "statechart", "tokio", "state-machine"]
+categories = ["concurrency"]
 
 [dependencies]
-xstate-core = { path = "../xstate-core", features = ["async"] }
-xstate-ir = { path = "../xstate-ir" }
+xstate-core = { path = "../xstate-core", version = "0.2.0", features = ["async"] }
+xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
 tokio = { version = "1", features = ["sync", "rt", "macros", "time"] }
 serde_json.workspace = true
 serde.workspace = true

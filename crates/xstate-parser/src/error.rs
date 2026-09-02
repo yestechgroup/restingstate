@@ -14,6 +14,9 @@ pub enum ParseError {
     #[error("Unsupported XState feature: {0}")]
     UnsupportedFeature(String),
 
+    #[error("source nesting exceeds the maximum supported depth of {0}")]
+    NestingTooDeep(usize),
+
     #[error("Unsupported assign expression: {0}")]
     UnsupportedAssign(String),
 }

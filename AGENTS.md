@@ -289,13 +289,20 @@ See [docs/runtime-paths.md](docs/runtime-paths.md) for the full runtime-path dec
   "machine_config": { <xstate.js createMachine config> },
   "protocol": {
     "initial": { "value": "inactive", "context": {} },
-    "events": [{ "type": "toggle" }]
+    "events": [
+      { "type": "toggle" },
+      { "type": "TICK", "advance_ms": 1100 }
+    ]
   },
   "expected": [
     { "value": "active", "context": {} }
   ]
 }
 ```
+
+An optional `"advance_ms": <u64>` on a protocol event advances time by that many ms
+before the event is dispatched: ts-runner sleeps with real timers (xstate.js `after`
+delays elapse) and rust-runner advances its `MockClock` by the same amount.
 
 ### Runner output (per step)
 

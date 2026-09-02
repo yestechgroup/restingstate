@@ -491,11 +491,17 @@ for (const tv of testVectors) {
   }
 
   for (const event of events) {
-    actor.send(event);
+    // `advance_ms` is a harness control field: wait this many ms (real timers,
+    // so xstate.js `after` delays elapse) before dispatching the event.
+    const { advance_ms, ...dispatch } = event;
+    if (advance_ms !== undefined) {
+      await new Promise((resolve) => setTimeout(resolve, advance_ms));
+    }
+    actor.send(dispatch);
     const snapshot = actor.getSnapshot();
     results.push({
       step: results.length,
-      event,
+      event: dispatch,
       snapshot: {
         value: stripImplMeta(snapshot.value),
         context: stripImplMeta(snapshot.context),

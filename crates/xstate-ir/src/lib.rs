@@ -1,10 +1,14 @@
 pub mod actors;
 pub mod machine;
+#[cfg(feature = "schema")]
+pub mod schema;
 pub mod state;
 pub mod transition;
 
 pub use actors::{ActionDef, ActorDef, GuardDef, SetupConfig};
 pub use machine::{ContextField, ContextSchema, Machine};
+#[cfg(feature = "schema")]
+pub use schema::{machine_ir_schema, machine_ir_schema_json};
 pub use state::{InvokeConfig, StateNode, StateType};
 pub use transition::{Action, Guard, Transition};
 

@@ -6,6 +6,8 @@ use crate::actions::ActionRegistry;
 use crate::clock::Clock;
 use crate::guards::GuardRegistry;
 use crate::state_value::StateValue;
+pub use crate::validation::MachineValidationError;
+use crate::validation::validate_machine_structure;
 
 const ASSIGN_OPS_KEY: &str = "$assign_ops";
 
@@ -170,6 +172,13 @@ pub enum PersistError {
 }
 
 impl Interpreter {
+    /// Reject machines whose `initial` pointers or transition targets reference
+    /// unknown states so boundaries can return typed errors instead of
+    /// panicking later (#29, target checks added in #30).
+    pub fn validate_machine(machine: &Machine) -> Result<(), MachineValidationError> {
+        validate_machine_structure(machine)
+    }
+
     pub fn new(machine: Machine) -> Self {
         let interpreter = Interpreter {
             machine,
@@ -237,12 +246,11 @@ impl Interpreter {
 
     pub fn initial_state(&self) -> StateValue {
         let initial_name = &self.machine.initial;
-        let node = self.find_root_state(initial_name).unwrap_or_else(|| {
-            panic!(
-                "Initial state '{}' not found in machine states",
-                initial_name
-            )
-        });
+        // Robustness (#29): an unknown initial falls back to a degenerate
+        // atomic value instead of panicking; validate_machine() reports it.
+        let Some(node) = self.find_root_state(initial_name) else {
+            return StateValue::Atomic(initial_name.clone());
+        };
         let value = self.resolve_initial_value(node);
         if node.node_type == StateType::Parallel
             && let StateValue::Compound { child, .. } = value
@@ -583,7 +591,7 @@ impl Interpreter {
                     .get(&node.name)
                     .copied()
                     .unwrap_or(0);
-                if now < entered_at + delay_ms {
+                if now < entered_at.saturating_add(delay_ms) {
                     continue;
                 }
                 if let Some(ref guard) = transition.guard
@@ -637,6 +645,16 @@ impl Interpreter {
                             );
                         }
                         self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                    }
+                    // #34: a self-target re-enters its source (nothing new
+                    // is entered, so the loop above skips it) — reset entry
+                    // times from the source down to re-arm after-deadlines.
+                    if common_prefix == target_path.len()
+                        && let Some(src_idx) = path.iter().position(|n| std::ptr::eq(*n, *node))
+                    {
+                        for n in &path[src_idx..] {
+                            self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                        }
                     }
                     return Some(target_value);
                 }
@@ -1152,6 +1170,12 @@ impl Interpreter {
                 continue;
             }
             for transition in &node.transitions {
+                // #34: delayed transitions fire only via resolve_after's
+                // deadline check — never eventlessly and never via a named
+                // event (resolve_after matches them regardless of event name).
+                if transition.delay_ms.is_some() {
+                    continue;
+                }
                 if transition.event != event {
                     continue;
                 }
@@ -1236,6 +1260,16 @@ impl Interpreter {
                     let now = clock.now_ms();
                     for n in &target_path[common_prefix..] {
                         self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                    }
+                    // #34: a self-target re-enters its source (nothing new
+                    // is entered, so the loop above skips it) — reset entry
+                    // times from the source down to re-arm after-deadlines.
+                    if common_prefix == target_path.len()
+                        && let Some(src_idx) = path.iter().position(|n| std::ptr::eq(*n, *node))
+                    {
+                        for n in &path[src_idx..] {
+                            self.entry_times.borrow_mut().insert(n.name.clone(), now);
+                        }
                     }
 
                     for n in path[common_prefix..].iter().rev() {
@@ -1431,16 +1465,12 @@ impl Interpreter {
                 });
 
                 let result = if let Some(initial_name) = &node.initial {
-                    let child = node
-                        .children
-                        .iter()
-                        .find(|c| &c.name == initial_name)
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Initial child '{}' not found in compound state '{}'",
-                                initial_name, node.name
-                            )
-                        });
+                    // Robustness (#29): fall back like resolve_region_value
+                    // instead of panicking on a dangling initial pointer.
+                    let child = match node.children.iter().find(|c| &c.name == initial_name) {
+                        Some(child) => child,
+                        None => return StateValue::Atomic(node.name.clone()),
+                    };
                     StateValue::Compound {
                         state: node.name.clone(),
                         child: Box::new(self.resolve_initial_value(child)),

@@ -4,9 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "OXC-based TypeScript parser that extracts XState machine definitions into xstate-ir."
+readme = "README.md"
+keywords = ["xstate", "typescript", "parser", "statechart", "oxc"]
+categories = ["parser-implementations"]
 
 [dependencies]
-xstate-ir = { path = "../xstate-ir" }
+xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
 oxc_parser.workspace = true
 oxc_allocator.workspace = true
 oxc_span.workspace = true

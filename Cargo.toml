@@ -15,14 +15,15 @@ members = [
     "tests/compatibility/rust-runner",
     "examples/rust-token-bucket",
     "examples/rust-dynamic",
+    "examples/embed",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.97"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/anomalyco/restingstate"
+repository = "https://github.com/yestechgroup/restingstate"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -36,6 +37,7 @@ oxc_span = "0.77"
 oxc_ast = "0.77"
 thiserror = "2"
 petgraph = "0.7"
+schemars = "1"
 proc-macro-error2 = "2"
 miette = "7"
 serde-wasm-bindgen = "0.6"
