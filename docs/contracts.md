@@ -16,7 +16,7 @@ Per the epic's crate split:
 |---|---|---|
 | **Public / stable** | `xstate-ir`, `xstate-core`, `xstate-parser`, `xstate-backend-native`, `xstate-actor` | Semver-enforced. Breaking changes require a version bump and a release-notes notice. |
 | **Public / beta** | `xstate-macro`, `xstate-codegen` | Consumable, but scoped to simple flat FSMs (see [runtime-paths.md](runtime-paths.md)). Breaking changes may land in minor releases; they will be called out in release notes. |
-| **Internal** (`publish = false`) | `xstate-wasm`, `xstate-napi`, `xstate-bench`, `rust-runner`, `examples/*`, `xstate-macro-test` | No stability promise. Consume `xstate-wasm` through the `@restingstate/wasm` npm package instead. |
+| **Internal** (`publish = false`) | `xstate-wasm`, `xstate-napi`, `xstate-bench`, `rust-runner`, `examples/*`, `xstate-macro-test` | No stability promise. Consume `xstate-wasm` through the `@yestechgroup/wasm` npm package instead. |
 
 - **Semver policy:** the workspace ships a single version (`workspace.package`). Until 1.0,
   breaking changes to stable crates bump the minor version; additive changes bump the patch.
@@ -340,14 +340,14 @@ literal assignment: `args = [key1, value1, key2, value2, ...]`. Pins:
   `{"value","context"}` shape and this envelope (pin:
   `machine_logic_persisted_round_trip_shape_is_pinned`).
 
-## JavaScript API (WASM, `@restingstate/wasm`)
+## JavaScript API (WASM, `@yestechgroup/wasm`)
 
 Built from `crates/xstate-wasm` (wasm-bindgen). All values cross the boundary as **JSON strings**;
 guard/action callbacks receive **JS objects** (not strings).
 
 ```javascript
 import init, { JsMachine, JsActorSystem, registerGuard, registerAction, clearRegistry }
-  from '@restingstate/wasm';
+  from '@yestechgroup/wasm';
 await init();
 
 // Single machine (crates/xstate-wasm/src/lib.rs:117)
@@ -398,7 +398,7 @@ generated with `schemars` from the `xstate-ir` types).
   `Interpreter::validate_machine` (`ValidateError::Invalid`): initial resolvability,
   compound initial children, and transition-target existence (dotted targets are
   root-anchored, bare names resolve anywhere in the tree — mirroring `build_target`).
-- **WASM validation:** `validateMachine(machineIrJson)` from `@restingstate/wasm`
+- **WASM validation:** `validateMachine(machineIrJson)` from `@yestechgroup/wasm`
   (`crates/xstate-wasm/src/lib.rs`) returns `"ok"` or a rejecting error message using
   the same checks.
 - **Sweep:** every hand-crafted compatibility vector's `machine_ir` is asserted to
