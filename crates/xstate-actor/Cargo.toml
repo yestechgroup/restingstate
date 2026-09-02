@@ -10,8 +10,8 @@ keywords = ["xstate", "actor", "statechart", "tokio", "state-machine"]
 categories = ["concurrency"]
 
 [dependencies]
-xstate-core = { path = "../xstate-core", version = "0.2.0", features = ["async"] }
-xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
+xstate-core = { path = "../xstate-core", version = "0.2.1", features = ["async"] }
+xstate-ir = { path = "../xstate-ir", version = "0.2.1" }
 tokio = { version = "1", features = ["sync", "rt", "macros", "time"] }
 serde_json.workspace = true
 serde.workspace = true

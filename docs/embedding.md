@@ -25,12 +25,12 @@ below use only Interpreter-path APIs.
 ```toml
 [dependencies]
 # Umbrella crate — one dependency, full public surface (prelude included):
-restingstate          = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
+restingstate          = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.1" }
 # …or the individual crates directly:
-xstate-core           = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
-xstate-ir             = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
-xstate-parser         = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
-xstate-backend-native = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.0" }
+xstate-core           = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.1" }
+xstate-ir             = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.1" }
+xstate-parser         = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.1" }
+xstate-backend-native = { git = "https://github.com/yestechgroup/restingstate", tag = "v0.2.1" }
 ```
 
 - **MSRV:** 1.97 (`rust-version = "1.97"`; an MSRV bump is a breaking change — see

@@ -14,7 +14,7 @@ default = ["async"]
 async = ["dep:tokio"]
 
 [dependencies]
-xstate-ir = { path = "../xstate-ir", version = "0.2.0" }
+xstate-ir = { path = "../xstate-ir", version = "0.2.1" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
