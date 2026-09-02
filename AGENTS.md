@@ -345,7 +345,7 @@ Test vectors live in `tests/compatibility/machines/` organized by category (25 h
 - `invoke/` — invoked actors
 - `payload/` — event payload support
 
-Additional extracted test vectors (34 vectors) are generated from the xstate.js
+Additional extracted test vectors (31 vectors; the extractor emits only faithfulness-guarded vectors — config/IR transition surface and declared-initial are verified against real xstate.js, artifact vectors are skipped) are generated from the xstate.js
 test suite and stored in `tests/compatibility/vectors/extracted/`. Use the
 extraction tool to regenerate them:
 
@@ -485,7 +485,7 @@ machine.send({ type: 'TOGGLE' });    // Returns new snapshot or null
 
 ## Project Status
 
-All planned phases complete. 205+ tests pass. 25 hand-crafted compatibility vectors (13 categories) + 34 extracted vectors. Actor system with dual backends (Tokio + WASM). WASM browser support with full JS API.
+All planned phases complete. 350+ tests pass. 25 hand-crafted compatibility vectors + 31 faithfulness-guarded extracted vectors. Actor system with dual backends (Tokio + WASM). WASM browser support with full JS API.
 
 ---
 

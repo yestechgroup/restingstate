@@ -18,6 +18,7 @@
  */
 import { execFileSync, spawnSync } from "child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { createMachine, createActor } from "xstate";
 import { tmpdir } from "os";
 import { basename, dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -739,10 +740,17 @@ function buildVector({ block, machineIr, fileBase, index, skipCompare }) {
     allEventsParsed &&
     (events.length === 0 || (expected.length > 0 && expected.length >= events.length));
 
+  const machineConfig = irToXstateConfig(machineIr);
+  const artifact = vectorIsFaithful(machineIr, machineConfig, resolveInitialStateValue(machineIr));
+  if (artifact) {
+    console.warn(`  [skip] ${machineName}: ${artifact}`);
+    return null;
+  }
+
   return {
     machine_name: machineName,
     machine_ir: machineIr,
-    machine_config: irToXstateConfig(machineIr),
+    machine_config: machineConfig,
     protocol: {
       initial: { value: initialValue, context: initialContext },
       events: events.map((e) => e.event),
@@ -751,6 +759,63 @@ function buildVector({ block, machineIr, fileBase, index, skipCompare }) {
     ...(skipCompare ? { skip_compare: true } : {}),
     extraction_status: full ? "full" : (hasContextAssertions ? "partial" : "partial"),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Extraction faithfulness guards
+//
+// The extractor's IR/config derivation is heuristic (regex + AST-lite over
+// test source). When it misreads a test it can emit a vector whose
+// machine_config is not the machine the IR describes, or whose declared
+// initial state contradicts what real xstate.js does with the config. Both
+// make the vector untrustworthy as parity ground truth, so we detect them
+// here and skip the vector instead of shipping a broken one.
+// ---------------------------------------------------------------------------
+
+function collectConfigEvents(state, acc) {
+  for (const ev of Object.keys(state.on ?? {})) acc.add(ev);
+  for (const child of Object.values(state.states ?? {})) collectConfigEvents(child, acc);
+}
+
+function collectIrEvents(states, acc) {
+  for (const st of states ?? []) {
+    for (const t of st.transitions ?? []) {
+      if (t.event && t.delay_ms == null) acc.add(t.event);
+    }
+    collectIrEvents(st.children, acc);
+  }
+}
+
+function configHasInvoke(state) {
+  if (state.invoke) return true;
+  return Object.values(state.states ?? {}).some((child) => configHasInvoke(child));
+}
+
+function vectorIsFaithful(machineIr, config, declaredInitial) {
+  const cfgEvents = new Set();
+  for (const state of Object.values(config.states ?? {})) collectConfigEvents(state, cfgEvents);
+  const irEvents = new Set();
+  collectIrEvents(machineIr.states, irEvents);
+  const missing = [...irEvents].filter((ev) => !cfgEvents.has(ev));
+  if (missing.length > 0) {
+    return `config/IR transition mismatch: config has no handler for ${missing.join(", ")}`;
+  }
+  if (!configHasInvoke(config)) {
+    try {
+      const actor = createActor(createMachine(config));
+      actor.start();
+      const actual = JSON.stringify(actor.getSnapshot().value);
+      actor.stop();
+      const declared = JSON.stringify(declaredInitial);
+      if (actual !== declared) {
+        return `initial mismatch: xstate.js executes config to ${actual}, IR walk says ${declared}`;
+      }
+    } catch {
+      // Config cannot be started standalone; skip this guard rather than
+      // reject a possibly-good vector.
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
