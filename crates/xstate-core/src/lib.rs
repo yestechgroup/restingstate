@@ -18,7 +18,7 @@ pub use clock::InstantClock;
 #[cfg(target_arch = "wasm32")]
 pub use clock::WasmClock;
 pub use clock::{Clock, MockClock};
-pub use guards::{GuardImpl, GuardRegistry};
+pub use guards::{GuardError, GuardImpl, GuardRegistry};
 pub use interpreter::{Interpreter, MachineValidationError};
 pub use machine::{Actions, Guards, Machine};
 pub use snapshot::Snapshot;

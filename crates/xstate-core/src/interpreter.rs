@@ -147,6 +147,50 @@ fn run_action_by_name(
     actions(action_name, &[], event_payload);
 }
 
+use crate::guards::GuardError;
+
+/// Trait for guard evaluation strategies.
+trait GuardEval {
+    fn eval(
+        &self,
+        name: &str,
+        ctx: &serde_json::Value,
+        event: &serde_json::Value,
+    ) -> Result<bool, GuardError>;
+}
+
+/// Total (infallible) guard evaluation — maps bool to Ok(bool).
+struct TotalGuardEval<'a> {
+    eval_fn: &'a dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+}
+
+impl GuardEval for TotalGuardEval<'_> {
+    fn eval(
+        &self,
+        name: &str,
+        ctx: &serde_json::Value,
+        event: &serde_json::Value,
+    ) -> Result<bool, GuardError> {
+        Ok((self.eval_fn)(name, ctx, event))
+    }
+}
+
+/// Fallible guard evaluation — preserves errors.
+struct FallibleGuardEval<'a> {
+    eval_fn: &'a dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> Result<bool, GuardError>,
+}
+
+impl GuardEval for FallibleGuardEval<'_> {
+    fn eval(
+        &self,
+        name: &str,
+        ctx: &serde_json::Value,
+        event: &serde_json::Value,
+    ) -> Result<bool, GuardError> {
+        (self.eval_fn)(name, ctx, event)
+    }
+}
+
 pub struct Interpreter {
     machine: Machine,
     history: RefCell<HashMap<String, StateValue>>,
@@ -415,33 +459,73 @@ impl Interpreter {
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
         clock: &dyn Clock,
     ) -> Option<StateValue> {
+        self.send_impl(
+            state,
+            event,
+            context,
+            &TotalGuardEval { eval_fn: guards },
+            actions,
+            clock,
+        )
+        .ok()
+        .flatten()
+    }
+
+    /// Fallible version of `send` — guard errors propagate as `Err(GuardError)`.
+    pub fn send_fallible(
+        &self,
+        state: &StateValue,
+        event: &serde_json::Value,
+        context: &mut serde_json::Value,
+        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> Result<bool, GuardError>,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
+    ) -> Result<Option<StateValue>, GuardError> {
+        self.send_impl(
+            state,
+            event,
+            context,
+            &FallibleGuardEval { eval_fn: guards },
+            actions,
+            clock,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn send_impl<E: GuardEval>(
+        &self,
+        state: &StateValue,
+        event: &serde_json::Value,
+        context: &mut serde_json::Value,
+        guards: &E,
+        actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
+        clock: &dyn Clock,
+    ) -> Result<Option<StateValue>, GuardError> {
         let event_type = event["type"].as_str().unwrap_or("");
         let mut current = state.clone();
         let result = match &current {
-            StateValue::Parallel { regions } => {
-                self.send_parallel(regions, event_type, event, context, guards, actions, clock)
-            }
+            StateValue::Parallel { regions } => self
+                .send_parallel_impl(regions, event_type, event, context, guards, actions, clock)?,
             StateValue::Compound { state: name, child } if self.contains_parallel(child) => {
-                let new_child = self.send(child, event, context, guards, actions, clock)?;
+                let new_child = self.send_impl(child, event, context, guards, actions, clock)?;
+                let new_child = match new_child {
+                    Some(c) => c,
+                    None => return Ok(None),
+                };
                 if self.contains_parallel(&new_child) {
-                    // The parallel (or a region of it) handled the event
-                    // internally: preserve the compound wrapper.
                     Some(StateValue::Compound {
                         state: name.clone(),
                         child: Box::new(new_child),
                     })
                 } else {
-                    // The new state no longer contains the parallel: a
-                    // transition on the compound node itself (or a history
-                    // target) exited it, and the value is already complete.
                     Some(new_child)
                 }
             }
             _ => {
                 let path = self.find_full_path(&current);
-                self.send_along_path(
+                self.send_along_path_impl(
                     &path, &current, event_type, event, context, guards, actions, clock,
-                )
+                )?
             }
         };
 
@@ -450,23 +534,25 @@ impl Interpreter {
             current = next_state.clone();
             changed = true;
             for _ in 0..10 {
-                match self.resolve_always(&current, context, guards, actions, clock) {
+                match self.resolve_always_impl(&current, context, guards, actions, clock)? {
                     Some(always_state) => current = always_state,
                     None => break,
                 }
             }
             for _ in 0..10 {
-                match self.resolve_after(&current, context, guards, actions, clock) {
+                match self.resolve_after_impl(&current, context, guards, actions, clock)? {
                     Some(after_state) => current = after_state,
                     None => break,
                 }
             }
             for _ in 0..10 {
-                match self.check_completion(&current, context, guards, actions, clock) {
+                match self.check_completion_impl(&current, context, guards, actions, clock)? {
                     Some(completed_state) => {
                         current = completed_state;
                         for _ in 0..10 {
-                            match self.resolve_always(&current, context, guards, actions, clock) {
+                            match self
+                                .resolve_always_impl(&current, context, guards, actions, clock)?
+                            {
                                 Some(always_state) => current = always_state,
                                 None => break,
                             }
@@ -477,12 +563,14 @@ impl Interpreter {
             }
         } else {
             for _ in 0..10 {
-                match self.resolve_after(&current, context, guards, actions, clock) {
+                match self.resolve_after_impl(&current, context, guards, actions, clock)? {
                     Some(after_state) => {
                         current = after_state;
                         changed = true;
                         for _ in 0..10 {
-                            match self.resolve_always(&current, context, guards, actions, clock) {
+                            match self
+                                .resolve_always_impl(&current, context, guards, actions, clock)?
+                            {
                                 Some(always_state) => current = always_state,
                                 None => break,
                             }
@@ -492,12 +580,14 @@ impl Interpreter {
                 }
             }
             for _ in 0..10 {
-                match self.check_completion(&current, context, guards, actions, clock) {
+                match self.check_completion_impl(&current, context, guards, actions, clock)? {
                     Some(completed_state) => {
                         current = completed_state;
                         changed = true;
                         for _ in 0..10 {
-                            match self.resolve_always(&current, context, guards, actions, clock) {
+                            match self
+                                .resolve_always_impl(&current, context, guards, actions, clock)?
+                            {
                                 Some(always_state) => current = always_state,
                                 None => break,
                             }
@@ -507,7 +597,7 @@ impl Interpreter {
                 }
             }
         }
-        if changed { Some(current) } else { None }
+        Ok(if changed { Some(current) } else { None })
     }
 
     /// Like `send`, but uses `GuardRegistry` / `ActionRegistry` instead of closures.
@@ -538,20 +628,43 @@ impl Interpreter {
         )
     }
 
-    fn resolve_always(
+    /// Like `send_with_registry`, but guard errors propagate as `Err(GuardError)`.
+    pub fn send_with_registry_fallible(
+        &self,
+        state: &StateValue,
+        event: &serde_json::Value,
+        context: &mut serde_json::Value,
+        guards: &GuardRegistry,
+        actions: &ActionRegistry,
+        clock: &dyn Clock,
+    ) -> Result<Option<StateValue>, GuardError> {
+        let raw = context as *mut serde_json::Value;
+        self.send_fallible(
+            state,
+            event,
+            context,
+            &|name, ctx, evt| guards.evaluate_fallible(name, ctx, evt),
+            &mut |name, args, evt| {
+                unsafe { actions.dispatch(name, args, evt, &mut *raw) };
+            },
+            clock,
+        )
+    }
+
+    fn resolve_always_impl<E: GuardEval>(
         &self,
         state: &StateValue,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        guards: &E,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
         clock: &dyn Clock,
-    ) -> Option<StateValue> {
+    ) -> Result<Option<StateValue>, GuardError> {
         let path = self.find_full_path(state);
         if path.is_empty() {
-            return None;
+            return Ok(None);
         }
         let empty_event = serde_json::json!({"type": ""});
-        self.send_along_path(
+        self.send_along_path_impl(
             &path,
             state,
             "",
@@ -563,17 +676,18 @@ impl Interpreter {
         )
     }
 
-    fn resolve_after(
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_after_impl<E: GuardEval>(
         &self,
         state: &StateValue,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        guards: &E,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
         clock: &dyn Clock,
-    ) -> Option<StateValue> {
+    ) -> Result<Option<StateValue>, GuardError> {
         let path = self.find_full_path(state);
         if path.is_empty() {
-            return None;
+            return Ok(None);
         }
         let now = clock.now_ms();
 
@@ -595,12 +709,14 @@ impl Interpreter {
                     continue;
                 }
                 if let Some(ref guard) = transition.guard
-                    && !guards(&guard.name, context, &serde_json::Value::Null)
+                    && !guards.eval(&guard.name, context, &serde_json::Value::Null)?
                 {
                     continue;
                 }
                 if let Some(ref target_name) = transition.target {
-                    let (target_path, target_value) = self.build_target(target_name)?;
+                    let Some((target_path, target_value)) = self.build_target(target_name) else {
+                        return Ok(None);
+                    };
                     let common_prefix = path
                         .iter()
                         .zip(target_path.iter())
@@ -656,11 +772,11 @@ impl Interpreter {
                             self.entry_times.borrow_mut().insert(n.name.clone(), now);
                         }
                     }
-                    return Some(target_value);
+                    return Ok(Some(target_value));
                 }
             }
         }
-        None
+        Ok(None)
     }
 
     fn contains_parallel(&self, state: &StateValue) -> bool {
@@ -672,17 +788,17 @@ impl Interpreter {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn check_completion(
+    fn check_completion_impl<E: GuardEval>(
         &self,
         state: &StateValue,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        guards: &E,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
         clock: &dyn Clock,
-    ) -> Option<StateValue> {
+    ) -> Result<Option<StateValue>, GuardError> {
         let path = self.find_full_path(state);
         if path.is_empty() {
-            return None;
+            return Ok(None);
         }
         for i in (0..path.len().saturating_sub(1)).rev() {
             let parent = path[i];
@@ -710,7 +826,7 @@ impl Interpreter {
 
             for transition in &parent.on_done {
                 if let Some(ref guard) = transition.guard
-                    && !guards(&guard.name, context, &serde_json::Value::Null)
+                    && !guards.eval(&guard.name, context, &serde_json::Value::Null)?
                 {
                     continue;
                 }
@@ -756,7 +872,7 @@ impl Interpreter {
                             }
                         }
 
-                        return Some(target_value);
+                        return Ok(Some(target_value));
                     }
                 } else if let Some(ref target_name) = transition.target
                     && let Some((target_path, target_value)) = self.build_target(target_name)
@@ -798,11 +914,11 @@ impl Interpreter {
                         }
                     }
 
-                    return Some(target_value);
+                    return Ok(Some(target_value));
                 }
             }
         }
-        None
+        Ok(None)
     }
 
     fn extract_state_value_at(
@@ -879,20 +995,32 @@ impl Interpreter {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn send_parallel(
+    fn send_parallel_impl<E: GuardEval>(
         &self,
         regions: &[(String, StateValue)],
         event: &str,
         event_payload: &serde_json::Value,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        guards: &E,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
         clock: &dyn Clock,
-    ) -> Option<StateValue> {
-        let region_name = &regions.first()?.0;
-        let region_path = Self::find_node_path_in(&self.machine.states, region_name)?;
+    ) -> Result<Option<StateValue>, GuardError> {
+        let region_name = &regions.first().map(|r| &r.0).ok_or_else(|| {
+            // This should not happen, but provide a sensible error.
+            GuardError {
+                guard_name: String::new(),
+                source: "no regions in parallel state".into(),
+            }
+        })?;
+        let region_path =
+            Self::find_node_path_in(&self.machine.states, region_name).ok_or_else(|| {
+                GuardError {
+                    guard_name: String::new(),
+                    source: "region path not found".into(),
+                }
+            })?;
         if region_path.len() < 2 {
-            return None;
+            return Ok(None);
         }
         let parallel_node = region_path[region_path.len() - 2];
         let scope = &parallel_node.children;
@@ -904,7 +1032,7 @@ impl Interpreter {
             let region_node = scope.iter().find(|n| &n.name == region_name);
             let region_scope = region_node.map(|n| &n.children[..]).unwrap_or(&[]);
             let transition_scope = region_scope.first().map(|_| region_scope).unwrap_or(scope);
-            match self.send_scoped(
+            match self.send_scoped_impl(
                 region_value,
                 region_scope,
                 transition_scope,
@@ -914,7 +1042,7 @@ impl Interpreter {
                 guards,
                 actions,
                 clock,
-            ) {
+            )? {
                 Some(new_value) => {
                     changed = true;
                     new_regions.push((region_name.clone(), new_value));
@@ -926,16 +1054,16 @@ impl Interpreter {
         }
 
         if changed {
-            return Some(StateValue::Parallel {
+            return Ok(Some(StateValue::Parallel {
                 regions: new_regions,
-            });
+            }));
         }
 
         let current_state = StateValue::Parallel {
             regions: regions.to_vec(),
         };
         let path = self.build_parallel_full_path(parallel_node, regions);
-        self.send_along_path(
+        self.send_along_path_impl(
             &path,
             &current_state,
             event,
@@ -967,7 +1095,8 @@ impl Interpreter {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn send_scoped(
+    #[allow(clippy::too_many_arguments)]
+    fn send_scoped_impl<E: GuardEval>(
         &self,
         state: &StateValue,
         search_scope: &[StateNode],
@@ -975,10 +1104,10 @@ impl Interpreter {
         event: &str,
         event_payload: &serde_json::Value,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        guards: &E,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
         clock: &dyn Clock,
-    ) -> Option<StateValue> {
+    ) -> Result<Option<StateValue>, GuardError> {
         match state {
             StateValue::Atomic(name) => {
                 let node = search_scope
@@ -986,18 +1115,21 @@ impl Interpreter {
                     .find(|n| n.name == *name)
                     .or_else(|| transition_scope.iter().find(|n| n.name == *name))
                     .or_else(|| Self::find_node_deep(search_scope, name))
-                    .or_else(|| Self::find_node_deep(transition_scope, name))?;
-                self.check_node_transitions(
-                    node,
-                    state,
-                    transition_scope,
-                    event,
-                    event_payload,
-                    context,
-                    guards,
-                    actions,
-                    clock,
-                )
+                    .or_else(|| Self::find_node_deep(transition_scope, name));
+                match node {
+                    Some(node) => self.check_node_transitions_impl(
+                        node,
+                        state,
+                        transition_scope,
+                        event,
+                        event_payload,
+                        context,
+                        guards,
+                        actions,
+                        clock,
+                    ),
+                    None => Ok(None),
+                }
             }
             StateValue::Compound {
                 state: compound_name,
@@ -1006,8 +1138,12 @@ impl Interpreter {
                 let node = search_scope
                     .iter()
                     .find(|n| n.name == *compound_name)
-                    .or_else(|| Self::find_node_deep(search_scope, compound_name))?;
-                if let Some(result) = self.check_node_transitions(
+                    .or_else(|| Self::find_node_deep(search_scope, compound_name));
+                let node = match node {
+                    Some(n) => n,
+                    None => return Ok(None),
+                };
+                if let Some(result) = self.check_node_transitions_impl(
                     node,
                     state,
                     transition_scope,
@@ -1017,10 +1153,10 @@ impl Interpreter {
                     guards,
                     actions,
                     clock,
-                ) {
-                    return Some(result);
+                )? {
+                    return Ok(Some(result));
                 }
-                let new_child = self.send_scoped(
+                let new_child = self.send_scoped_impl(
                     child,
                     &node.children,
                     &node.children,
@@ -1031,12 +1167,15 @@ impl Interpreter {
                     actions,
                     clock,
                 )?;
-                Some(StateValue::Compound {
-                    state: compound_name.clone(),
-                    child: Box::new(new_child),
-                })
+                match new_child {
+                    Some(c) => Ok(Some(StateValue::Compound {
+                        state: compound_name.clone(),
+                        child: Box::new(c),
+                    })),
+                    None => Ok(None),
+                }
             }
-            _ => None,
+            _ => Ok(None),
         }
     }
 
@@ -1053,7 +1192,8 @@ impl Interpreter {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn check_node_transitions(
+    #[allow(clippy::too_many_arguments)]
+    fn check_node_transitions_impl<E: GuardEval>(
         &self,
         node: &StateNode,
         current_value: &StateValue,
@@ -1061,19 +1201,19 @@ impl Interpreter {
         event: &str,
         event_payload: &serde_json::Value,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        guards: &E,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
         clock: &dyn Clock,
-    ) -> Option<StateValue> {
+    ) -> Result<Option<StateValue>, GuardError> {
         if node.node_type == StateType::Final {
-            return None;
+            return Ok(None);
         }
         for transition in &node.transitions {
             if transition.event != event {
                 continue;
             }
             if let Some(ref guard) = transition.guard
-                && !guards(&guard.name, context, event_payload)
+                && !guards.eval(&guard.name, context, event_payload)?
             {
                 continue;
             }
@@ -1081,7 +1221,11 @@ impl Interpreter {
                 let target = transition_scope
                     .iter()
                     .find(|n| n.name == *target_name)
-                    .or_else(|| Self::find_node_deep(transition_scope, target_name))?;
+                    .or_else(|| Self::find_node_deep(transition_scope, target_name));
+                let target = match target {
+                    Some(t) => t,
+                    None => return Ok(None),
+                };
                 let target_value = self.resolve_initial_value(target);
                 let now = clock.now_ms();
                 self.entry_times
@@ -1096,15 +1240,15 @@ impl Interpreter {
                 for action_name in &target.entry {
                     run_action_by_name(action_name, event_payload, context, actions);
                 }
-                return Some(target_value);
+                return Ok(Some(target_value));
             } else {
                 for action in &transition.actions {
                     run_action(action, event_payload, context, actions);
                 }
-                return Some(current_value.clone());
+                return Ok(Some(current_value.clone()));
             }
         }
-        None
+        Ok(None)
     }
 
     fn find_full_path(&self, value: &StateValue) -> Vec<&StateNode> {
@@ -1154,17 +1298,18 @@ impl Interpreter {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn send_along_path(
+    #[allow(clippy::too_many_arguments)]
+    fn send_along_path_impl<E: GuardEval>(
         &self,
         path: &[&StateNode],
         current_state: &StateValue,
         event: &str,
         event_payload: &serde_json::Value,
         context: &mut serde_json::Value,
-        guards: &dyn Fn(&str, &serde_json::Value, &serde_json::Value) -> bool,
+        guards: &E,
         actions: &mut dyn FnMut(&str, &[serde_json::Value], &serde_json::Value),
         clock: &dyn Clock,
-    ) -> Option<StateValue> {
+    ) -> Result<Option<StateValue>, GuardError> {
         for node in path.iter().rev() {
             if node.node_type == StateType::Final {
                 continue;
@@ -1180,14 +1325,17 @@ impl Interpreter {
                     continue;
                 }
                 if let Some(ref guard) = transition.guard
-                    && !guards(&guard.name, context, event_payload)
+                    && !guards.eval(&guard.name, context, event_payload)?
                 {
                     continue;
                 }
 
                 if !transition.targets.is_empty() {
-                    let (target_path, target_value) =
-                        self.build_multi_target(&transition.targets)?;
+                    let Some((target_path, target_value)) =
+                        self.build_multi_target(&transition.targets)
+                    else {
+                        return Ok(None);
+                    };
 
                     let common_prefix = path
                         .iter()
@@ -1224,9 +1372,11 @@ impl Interpreter {
                         }
                     }
 
-                    return Some(target_value);
+                    return Ok(Some(target_value));
                 } else if let Some(ref target_name) = transition.target {
-                    let (target_path, target_value) = self.build_target(target_name)?;
+                    let Some((target_path, target_value)) = self.build_target(target_name) else {
+                        return Ok(None);
+                    };
 
                     let common_prefix = path
                         .iter()
@@ -1288,17 +1438,17 @@ impl Interpreter {
                         }
                     }
 
-                    return Some(target_value);
+                    return Ok(Some(target_value));
                 } else {
                     for action in &transition.actions {
                         run_action(action, event_payload, context, actions);
                     }
-                    return Some(current_state.clone());
+                    return Ok(Some(current_state.clone()));
                 }
             }
         }
 
-        None
+        Ok(None)
     }
 
     fn build_target(&self, target_name: &str) -> Option<(Vec<&StateNode>, StateValue)> {
@@ -3937,6 +4087,107 @@ mod tests {
         assert!(actions_log.contains(&"exit_loading".to_string()));
         assert!(actions_log.contains(&"on_loading_done".to_string()));
         assert!(actions_log.contains(&"enter_loaded".to_string()));
+    }
+
+    #[test]
+    fn send_fallible_no_guards_ok() {
+        let interpreter = Interpreter::new(toggle_machine());
+        let state = StateValue::Atomic("inactive".into());
+        let mut context = interpreter.initial_context();
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str,
+                      _: &serde_json::Value,
+                      _: &serde_json::Value|
+         -> Result<bool, GuardError> { Ok(true) };
+
+        let result = interpreter.send_fallible(
+            &state,
+            &serde_json::json!({"type": "toggle"}),
+            &mut context,
+            &guards,
+            &mut actions,
+            &MockClock::new(0),
+        );
+        assert_eq!(result.unwrap(), Some(StateValue::Atomic("active".into())));
+    }
+
+    #[test]
+    fn send_fallible_guard_err() {
+        let machine = payment_machine();
+        let interpreter = Interpreter::new(machine);
+        let state = StateValue::Atomic("idle".into());
+        let mut context = interpreter.initial_context();
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |name: &str,
+                      _: &serde_json::Value,
+                      _: &serde_json::Value|
+         -> Result<bool, GuardError> {
+            if name == "isAmountValid" {
+                Err(GuardError {
+                    guard_name: name.into(),
+                    source: "FEEL error".into(),
+                })
+            } else {
+                Ok(true)
+            }
+        };
+
+        let result = interpreter.send_fallible(
+            &state,
+            &serde_json::json!({"type": "PAY"}),
+            &mut context,
+            &guards,
+            &mut actions,
+            &MockClock::new(0),
+        );
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().guard_name, "isAmountValid");
+    }
+
+    #[test]
+    fn send_fallible_guard_false_skips() {
+        let interpreter = Interpreter::new(payment_machine());
+        let state = StateValue::Atomic("idle".into());
+        let mut context = interpreter.initial_context();
+        let mut actions = |_: &str, _: &[serde_json::Value], _: &serde_json::Value| {};
+        let guards = |_: &str,
+                      _: &serde_json::Value,
+                      _: &serde_json::Value|
+         -> Result<bool, GuardError> { Ok(false) };
+
+        let result = interpreter.send_fallible(
+            &state,
+            &serde_json::json!({"type": "PAY"}),
+            &mut context,
+            &guards,
+            &mut actions,
+            &MockClock::new(0),
+        );
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn send_with_registry_fallible_err() {
+        use crate::guards::{GuardImpl, GuardRegistry};
+        let mut reg = GuardRegistry::new();
+        reg.register(GuardImpl::new_fallible("isAmountValid", |_, _| {
+            Err("FEEL eval error".into())
+        }));
+        let machine = payment_machine();
+        let interpreter = Interpreter::new(machine);
+        let state = StateValue::Atomic("idle".into());
+        let mut context = interpreter.initial_context();
+        let actions = crate::actions::ActionRegistry::new();
+
+        let result = interpreter.send_with_registry_fallible(
+            &state,
+            &serde_json::json!({"type": "PAY"}),
+            &mut context,
+            &reg,
+            &actions,
+            &MockClock::new(0),
+        );
+        assert!(result.is_err());
     }
 }
 

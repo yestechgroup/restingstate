@@ -1,6 +1,6 @@
 use crate::actions::ActionRegistry;
 use crate::clock::Clock;
-use crate::guards::GuardRegistry;
+use crate::guards::{GuardError, GuardRegistry};
 use crate::interpreter::Interpreter;
 use crate::state_value::StateValue;
 use std::sync::Mutex;
@@ -170,6 +170,44 @@ impl ActorLogic for MachineLogic {
         }
 
         vec![]
+    }
+}
+
+impl MachineLogic {
+    /// Like `receive`, but propagates guard evaluation errors.
+    pub fn receive_fallible(
+        &mut self,
+        event: serde_json::Value,
+        snapshot: &mut serde_json::Value,
+    ) -> Result<Vec<ActorOutput>, GuardError> {
+        let interp = self.interpreter.lock().unwrap();
+        let state: StateValue = serde_json::from_value(snapshot["value"].clone())
+            .unwrap_or_else(|_| interp.initial_state());
+        let mut context = snapshot
+            .get("context")
+            .cloned()
+            .unwrap_or_else(|| interp.initial_context());
+
+        let clock = self.clock.lock().unwrap();
+        let new_state = interp.send_with_registry_fallible(
+            &state,
+            &event,
+            &mut context,
+            &self.guards,
+            &self.actions,
+            clock.as_ref(),
+        )?;
+        drop(clock);
+        drop(interp);
+
+        if let Some(s) = new_state {
+            *snapshot = serde_json::json!({
+                "value": serde_json::to_value(&s).unwrap(),
+                "context": context,
+            });
+        }
+
+        Ok(vec![])
     }
 }
 
@@ -720,5 +758,77 @@ mod tests {
         assert_eq!(snap["context"]["count"], 0);
         logic.receive(serde_json::json!({"type": "INCREMENT"}), &mut snap);
         assert_eq!(snap["context"]["count"], 42);
+    }
+
+    #[test]
+    fn machine_logic_receive_fallible_guard_err() {
+        let mut guards = crate::guards::GuardRegistry::new();
+        guards.register(crate::guards::GuardImpl::new_fallible(
+            "canToggle",
+            |_, _| Err("FEEL error".into()),
+        ));
+
+        let machine = xstate_ir::Machine {
+            id: "fallible_guard".into(),
+            initial: "off".into(),
+            context: xstate_ir::ContextSchema { fields: vec![] },
+            states: vec![
+                atomic_node(
+                    "off",
+                    vec![trans("TOGGLE", Some("on"), Some("canToggle"), vec![])],
+                ),
+                atomic_node("on", vec![]),
+            ],
+            setup: None,
+        };
+        let interp = Interpreter::new(machine);
+        let mut logic = MachineLogic::new_with_registries(
+            interp,
+            crate::clock::MockClock::new(0),
+            guards,
+            crate::actions::ActionRegistry::new(),
+        );
+
+        let mut snap = logic.initial_snapshot();
+        let result = logic.receive_fallible(serde_json::json!({"type": "TOGGLE"}), &mut snap);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().guard_name, "canToggle");
+        // State should NOT have changed
+        assert_eq!(snap["value"], "off");
+    }
+
+    #[test]
+    fn machine_logic_receive_fallible_ok() {
+        let mut guards = crate::guards::GuardRegistry::new();
+        guards.register(crate::guards::GuardImpl::new_fallible(
+            "canToggle",
+            |_, _| Ok(true),
+        ));
+
+        let machine = xstate_ir::Machine {
+            id: "fallible_ok".into(),
+            initial: "off".into(),
+            context: xstate_ir::ContextSchema { fields: vec![] },
+            states: vec![
+                atomic_node(
+                    "off",
+                    vec![trans("TOGGLE", Some("on"), Some("canToggle"), vec![])],
+                ),
+                atomic_node("on", vec![]),
+            ],
+            setup: None,
+        };
+        let interp = Interpreter::new(machine);
+        let mut logic = MachineLogic::new_with_registries(
+            interp,
+            crate::clock::MockClock::new(0),
+            guards,
+            crate::actions::ActionRegistry::new(),
+        );
+
+        let mut snap = logic.initial_snapshot();
+        let result = logic.receive_fallible(serde_json::json!({"type": "TOGGLE"}), &mut snap);
+        assert!(result.is_ok());
+        assert_eq!(snap["value"], "on");
     }
 }
