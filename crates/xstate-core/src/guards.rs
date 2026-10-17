@@ -249,6 +249,118 @@ pub fn not_fallible(guard: GuardImpl) -> GuardImpl {
     )
 }
 
+/// The typed counterpart of [`GuardError`]: the guard name plus the
+/// guard's OWN error type, preserved end-to-end instead of erased into
+/// `Box<dyn Error>`. Produced by [`TypedGuard::evaluate`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuardFailure<E> {
+    /// Name of the guard that failed.
+    pub guard: String,
+    /// The guard's typed error.
+    pub source: E,
+}
+
+impl<E: fmt::Display> fmt::Display for GuardFailure<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "guard '{}' failed: {}", self.guard, self.source)
+    }
+}
+
+impl<E: std::error::Error + Send + Sync + 'static> From<GuardFailure<E>> for GuardError {
+    /// Bridge into the erased world: a typed failure can cross into any API
+    /// that consumes [`GuardError`], with the typed error preserved in the
+    /// `source` chain (downcast-friendly).
+    fn from(f: GuardFailure<E>) -> Self {
+        GuardError {
+            guard_name: f.guard,
+            source: Box::new(f.source),
+        }
+    }
+}
+
+/// A guard with TYPED context, event, and error — for consumers whose
+/// transition layer is generically typed (hand-written `Machine`
+/// implementations, typed runtimes) and whose failure modes are enumerated
+/// rather than erased.
+///
+/// `TypedGuard` deliberately does NOT live in a [`GuardRegistry`]: the
+/// registry is JSON-erased by design (it serves the dynamic `Interpreter`
+/// path), and erasing a typed error back into `Box<dyn Error>` would defeat
+/// the point. Hold typed guards directly and call [`TypedGuard::evaluate`];
+/// when one must cross into the erased world, [`GuardFailure`] converts
+/// into [`GuardError`] via `From`.
+///
+/// ```
+/// use xstate_core::guards::TypedGuard;
+///
+/// #[derive(Debug, PartialEq)]
+/// enum AuctionError { NotEligible }
+/// impl fmt::Display for AuctionError {
+///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         match self { Self::NotEligible => write!(f, "participant not eligible") }
+///     }
+/// }
+/// impl std::error::Error for AuctionError {}
+///
+/// let guard: TypedGuard<u64, (), AuctionError> =
+///     TypedGuard::new("eligible", |deposit, _| {
+///         if *deposit >= 5_000 { Ok(true) } else { Err(AuctionError::NotEligible) }
+///     });
+///
+/// assert!(guard.evaluate(&5_000, &()).unwrap());
+/// let failure = guard.evaluate(&100, &()).unwrap_err();
+/// assert_eq!(failure.guard, "eligible");
+/// assert_eq!(failure.source, AuctionError::NotEligible);
+/// ```
+/// The erased evaluation closure of a [`TypedGuard`].
+type TypedGuardFn<C, Ev, E> = Box<dyn Fn(&C, &Ev) -> Result<bool, E> + Send + Sync>;
+
+pub struct TypedGuard<C, Ev, E> {
+    name: String,
+    f: TypedGuardFn<C, Ev, E>,
+}
+
+impl<C, Ev, E> TypedGuard<C, Ev, E> {
+    /// Names and wraps a typed guard closure.
+    pub fn new(
+        name: impl Into<String>,
+        f: impl Fn(&C, &Ev) -> Result<bool, E> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            f: Box::new(f),
+        }
+    }
+
+    /// The guard's name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Typed evaluation: the error survives as `E`, wrapped with the guard
+    /// name in [`GuardFailure`].
+    pub fn evaluate(&self, context: &C, event: &Ev) -> Result<bool, GuardFailure<E>> {
+        (self.f)(context, event).map_err(|source| GuardFailure {
+            guard: self.name.clone(),
+            source,
+        })
+    }
+}
+
+impl<E: std::error::Error + Send + Sync + 'static>
+    TypedGuard<serde_json::Value, serde_json::Value, E>
+{
+    /// Erase into a registry-compatible [`GuardImpl`]: the typed error is
+    /// boxed at this boundary (and remains downcast-recoverable through
+    /// `GuardError::source`). Use when a typed guard must live in a
+    /// `GuardRegistry`; prefer direct [`TypedGuard::evaluate`] otherwise.
+    pub fn erased(self) -> GuardImpl {
+        GuardImpl::new_fallible(self.name, move |ctx, ev| {
+            (self.f)(ctx, ev).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -625,5 +737,97 @@ mod tests {
                 .evaluate_fallible(&serde_json::Value::Null, &serde_json::Value::Null)
                 .unwrap()
         );
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum TestError {
+        NotEligible,
+        Expired,
+    }
+
+    impl fmt::Display for TestError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::NotEligible => write!(f, "participant not eligible"),
+                Self::Expired => write!(f, "submission deadline passed"),
+            }
+        }
+    }
+
+    impl std::error::Error for TestError {}
+
+    #[test]
+    fn typed_guard_preserves_the_error_type() {
+        let guard: TypedGuard<u64, (), TestError> = TypedGuard::new("eligible", |deposit, _| {
+            if *deposit >= 5_000 {
+                Ok(true)
+            } else {
+                Err(TestError::NotEligible)
+            }
+        });
+        assert!(guard.evaluate(&5_000, &()).unwrap());
+        let failure = guard.evaluate(&100, &()).unwrap_err();
+        assert_eq!(failure.guard, "eligible");
+        assert_eq!(failure.source, TestError::NotEligible);
+        assert_eq!(guard.name(), "eligible");
+    }
+
+    #[test]
+    fn typed_guard_failure_displays_guard_and_source() {
+        let guard: TypedGuard<u64, (), TestError> =
+            TypedGuard::new("deadline", |_, _| Err(TestError::Expired));
+        let failure = guard.evaluate(&1, &()).unwrap_err();
+        let msg = failure.to_string();
+        assert!(msg.contains("deadline"));
+        assert!(msg.contains("submission deadline passed"));
+    }
+
+    #[test]
+    fn typed_guard_failure_bridges_into_guard_error_downcastable() {
+        let guard: TypedGuard<serde_json::Value, serde_json::Value, TestError> =
+            TypedGuard::new("typed", |_, _| Err(TestError::NotEligible));
+        let erased: GuardError = GuardFailure {
+            guard: guard.name().to_string(),
+            source: TestError::NotEligible,
+        }
+        .into();
+        assert_eq!(erased.guard_name, "typed");
+        let down = erased
+            .source
+            .downcast_ref::<TestError>()
+            .expect("typed error preserved in the source chain");
+        assert_eq!(down, &TestError::NotEligible);
+    }
+
+    #[test]
+    fn typed_guard_erases_into_a_registry() {
+        let guard: TypedGuard<serde_json::Value, serde_json::Value, TestError> = TypedGuard::new(
+            "deposit",
+            |ctx: &serde_json::Value, _: &serde_json::Value| {
+                if ctx["deposit"].as_i64().unwrap_or(0) >= 5_000 {
+                    Ok(true)
+                } else {
+                    Err(TestError::NotEligible)
+                }
+            },
+        );
+        let mut reg = GuardRegistry::new();
+        reg.register(guard.erased());
+        let ok = reg.evaluate_fallible(
+            "deposit",
+            &serde_json::json!({"deposit": 9_000}),
+            &serde_json::Value::Null,
+        );
+        assert!(ok.unwrap());
+        let err = reg
+            .evaluate_fallible(
+                "deposit",
+                &serde_json::json!({"deposit": 1}),
+                &serde_json::Value::Null,
+            )
+            .unwrap_err();
+        assert_eq!(err.guard_name, "deposit");
+        let down = err.source.downcast_ref::<TestError>().unwrap();
+        assert_eq!(down, &TestError::NotEligible);
     }
 }
