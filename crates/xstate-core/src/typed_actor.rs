@@ -10,6 +10,7 @@
 //!
 //! ```
 //! use xstate_core::typed_actor::{JsonTypedAdapter, TypedActorLogic};
+//! use xstate_core::ActorLogic;
 //! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Clone, Serialize, Deserialize, PartialEq)]
