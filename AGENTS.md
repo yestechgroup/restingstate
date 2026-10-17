@@ -11,6 +11,35 @@ cargo test --workspace -- --ignored  # Run compatibility harness (slow)
 cargo bench -p xstate-bench  # Run Criterion benchmarks
 ```
 
+### Before pushing — run the full gate, check exit codes
+
+CI runs the exact steps above (plus doctests via `cargo test --workspace`,
+rustdoc with `-D warnings`, and the wasm/no-default-features builds).
+Replicate them **locally and completely** before every push; GitHub
+workflow minutes are not a lint tier:
+
+```bash
+cargo fmt --all -- --check \
+  && cargo clippy --all-targets --all-features -- -D warnings \
+  && cargo build --workspace \
+  && cargo test --workspace \
+  && RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+```
+
+Rules that have actually bitten:
+
+- **Judge pass/fail by the command's exit code** (`cmd && echo PASS`), never
+  by grepping output with `head`/filters — `cargo test` prints its doctest
+  results at the very END, and a truncated view hides them. Doctests count:
+  they compile standalone (imports must be self-contained) and run as part
+  of every `cargo test`.
+- Doc examples are tests. Any `///` example must import what it uses and
+  must not warn under rustdoc `-D warnings`.
+- When touching anything behind feature gates, also build the gated
+  variants locally: `cargo build -p xstate-core --no-default-features` and
+  `--target wasm32-unknown-unknown` (the wasm jobs only run after
+  build-and-test is green, so a failure there wastes a full CI round trip).
+
 ---
 
 ## Crate Map
