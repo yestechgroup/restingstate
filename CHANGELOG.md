@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.1] - unreleased
 
 ### Added
+- `xstate-core`: `TypedGuard` / `GuardFailure` — guards with end-to-end
+  typed context, event, and error (optional erasure into the registry via
+  `TypedGuard::erased()`); additive, non-breaking
 - npm package now ships a README (rendered on npmjs.com) via `scripts/npm-README.md`
 - `restingstate` umbrella crate (workspace root): re-exports all seven public
   crates plus a `prelude` module — the one-name dependency for downstreams
