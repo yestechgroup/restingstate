@@ -278,6 +278,9 @@ impl<E: std::error::Error + Send + Sync + 'static> From<GuardFailure<E>> for Gua
     }
 }
 
+/// The erased evaluation closure of a [`TypedGuard`].
+type TypedGuardFn<C, Ev, E> = Box<dyn Fn(&C, &Ev) -> Result<bool, E> + Send + Sync>;
+
 /// A guard with TYPED context, event, and error — for consumers whose
 /// transition layer is generically typed (hand-written `Machine`
 /// implementations, typed runtimes) and whose failure modes are enumerated
@@ -291,6 +294,8 @@ impl<E: std::error::Error + Send + Sync + 'static> From<GuardFailure<E>> for Gua
 /// into [`GuardError`] via `From`.
 ///
 /// ```
+/// use core::fmt;
+///
 /// use xstate_core::guards::TypedGuard;
 ///
 /// #[derive(Debug, PartialEq)]
@@ -312,9 +317,6 @@ impl<E: std::error::Error + Send + Sync + 'static> From<GuardFailure<E>> for Gua
 /// assert_eq!(failure.guard, "eligible");
 /// assert_eq!(failure.source, AuctionError::NotEligible);
 /// ```
-/// The erased evaluation closure of a [`TypedGuard`].
-type TypedGuardFn<C, Ev, E> = Box<dyn Fn(&C, &Ev) -> Result<bool, E> + Send + Sync>;
-
 pub struct TypedGuard<C, Ev, E> {
     name: String,
     f: TypedGuardFn<C, Ev, E>,
