@@ -295,6 +295,7 @@ fn guard_and_action_closure_argument_positions_are_pinned() {
         let mut t = trans("SUBMIT", "done");
         t.guard = Some(xstate_ir::Guard {
             name: "canSubmit".into(),
+            params: None,
         });
         t.actions = vec![Action {
             name: "log".into(),
@@ -365,6 +366,7 @@ fn missing_guard_allows_and_missing_action_is_noop() {
         let mut t = trans("NEXT", "done");
         t.guard = Some(xstate_ir::Guard {
             name: "nope".into(),
+            params: None,
         });
         t.actions = vec![Action {
             name: "nope".into(),

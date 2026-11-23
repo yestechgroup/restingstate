@@ -449,6 +449,7 @@ fn guarded_send_with_malformed_guard_names_does_not_panic() {
     let mut guarded = trans("GO", "idle");
     guarded.guard = Some(Guard {
         name: String::new(),
+        params: None,
     });
     let machine = Machine {
         id: "m".into(),

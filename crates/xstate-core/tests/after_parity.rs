@@ -257,6 +257,7 @@ fn sibling_always_and_after_coexist() {
         target: Some("wait".into()),
         guard: Some(Guard {
             name: "opened".into(),
+            params: None,
         }),
         actions: vec![],
         description: None,
@@ -365,6 +366,7 @@ fn guard_on_after_transition_is_evaluated_at_fire_time() {
         target: Some("done".into()),
         guard: Some(Guard {
             name: "ready".into(),
+            params: None,
         }),
         actions: vec![],
         description: None,

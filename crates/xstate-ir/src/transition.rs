@@ -22,6 +22,11 @@ pub struct Transition {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Guard {
     pub name: String,
+    /// Serializable guard data carried from the authored
+    /// `{ type: 'x', params: {...} }` guard object (the form recommended by
+    /// the XState v5 docs). Absent for plain string guards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,10 +88,35 @@ mod tests {
     fn guard_round_trip() {
         let guard = Guard {
             name: "isAdmin".into(),
+            params: None,
         };
         let json = serde_json::to_string_pretty(&guard).unwrap();
         let round_tripped: Guard = serde_json::from_str(&json).unwrap();
         assert_eq!(guard, round_tripped);
+    }
+
+    #[test]
+    fn guard_with_params_round_trip() {
+        let guard = Guard {
+            name: "isValid".into(),
+            params: Some(serde_json::json!({ "maxLength": 50 })),
+        };
+        let json = serde_json::to_string(&guard).unwrap();
+        let round_tripped: Guard = serde_json::from_str(&json).unwrap();
+        assert_eq!(guard, round_tripped);
+        // Params must survive serialization — never silently stripped.
+        assert_eq!(
+            round_tripped.params,
+            Some(serde_json::json!({ "maxLength": 50 }))
+        );
+    }
+
+    #[test]
+    fn guard_json_without_params_still_deserializes() {
+        // Back-compat: IR JSON written before params existed must keep loading.
+        let guard: Guard = serde_json::from_str(r#"{ "name": "isAdmin" }"#).unwrap();
+        assert_eq!(guard.name, "isAdmin");
+        assert_eq!(guard.params, None);
     }
 
     #[test]
@@ -112,6 +142,7 @@ mod tests {
             target: Some("submitted".into()),
             guard: Some(Guard {
                 name: "isValid".into(),
+                params: None,
             }),
             actions: vec![],
             description: Some("Submit form if valid".into()),

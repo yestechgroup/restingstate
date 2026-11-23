@@ -340,6 +340,7 @@ fn transition_with_guard() {
                         target: Some("submitted".into()),
                         guard: Some(Guard {
                             name: "isValid".into(),
+                            params: None,
                         }),
                         actions: vec![],
                         description: None,

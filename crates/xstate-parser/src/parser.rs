@@ -294,7 +294,7 @@ fn collect_from_call<'a>(
     machines: &mut Vec<Machine>,
 ) -> Result<(), ParseError> {
     if let Some((config, setup)) = try_get_machine_config(call) {
-        push_machine_lenient(config, &setup, machines);
+        push_machine(config, &setup, machines)?;
     }
     // Recurse into arguments (they may contain nested createMachine calls)
     for arg in call.arguments.iter() {
@@ -318,44 +318,65 @@ fn collect_from_argument<'a>(
     }
 }
 
-/// Extract every `createMachine(...)` call from a file, in source order.
+/// Extract one `createMachine(...)` config into the machines output.
 ///
-/// Unlike [`parse`], this walks the whole program (including machines nested
-/// inside `it(...)`/`describe(...)` callback bodies) and is lenient per
-/// machine: a machine missing `id`/`initial` gets a synthesized id and its
-/// first state as initial, matching XState's default behaviour.
-fn push_machine_lenient(config: &ObjectExpression, setup: &SetupConfig, out: &mut Vec<Machine>) {
-    let id = extract_string_prop(config, "id").unwrap_or_else(|| format!("machine-{}", out.len()));
+/// Lenient only about *missing* properties (an anonymous machine gets a
+/// synthesized id and its first state as initial, matching XState's default
+/// behaviour). Constructs that are *present* but unrepresentable — inline
+/// guards/actions, non-literal scalars — are typed errors that propagate to
+/// the caller (issue #46): a silent drop would return a different machine
+/// than the one authored.
+fn push_machine(
+    config: &ObjectExpression,
+    setup: &SetupConfig,
+    out: &mut Vec<Machine>,
+) -> Result<(), ParseError> {
+    let id = require_string_prop(config, "id", "machine 'id'")?
+        .unwrap_or_else(|| format!("machine-{}", out.len()));
 
-    let states = config
-        .get_object_prop_value("states")
-        .and_then(|expr| match expr {
-            Expression::ObjectExpression(states_obj) => {
-                extract_states_object(states_obj, &setup.delays).ok()
-            }
-            _ => None,
-        })
-        .unwrap_or_default();
+    let states = match config.get_object_prop_value("states") {
+        Some(Expression::ObjectExpression(states_obj)) => {
+            extract_states_object(states_obj, &setup.delays)?
+        }
+        Some(_) => {
+            return Err(ParseError::InvalidMachine(
+                "'states' must be an object mapping state names to state nodes".to_string(),
+            ));
+        }
+        None => Vec::new(),
+    };
 
     // A root-parallel machine has no single initial state; leave the initial
     // empty so callers can detect and skip it (the IR cannot express a
     // parallel root, and neither runtime can run one faithfully).
-    let root_type = extract_string_prop(config, "type");
-    let initial = if root_type.as_deref() == Some("parallel") {
-        extract_string_prop(config, "initial").unwrap_or_default()
+    let root_type = match config.get_object_prop_value("type") {
+        Some(expr) => {
+            let s = extract_string(expr).ok_or_else(|| {
+                ParseError::UnsupportedFeature(
+                    "machine 'type' is present but not a plain string literal".to_string(),
+                )
+            })?;
+            Some(parse_state_type(&s)?)
+        }
+        None => None,
+    };
+    let initial = if root_type == Some(StateType::Parallel) {
+        require_string_prop(config, "initial", "machine 'initial'")?.unwrap_or_default()
     } else {
-        extract_string_prop(config, "initial")
+        require_string_prop(config, "initial", "machine 'initial'")?
             .or_else(|| states.first().map(|s| s.name.clone()))
             .unwrap_or_default()
     };
 
-    let context = config
-        .get_object_prop_value("context")
-        .and_then(|expr| match expr {
-            Expression::ObjectExpression(ctx_obj) => Some(extract_context_schema(ctx_obj)),
-            _ => None,
-        })
-        .unwrap_or_else(|| ContextSchema { fields: vec![] });
+    let context = match config.get_object_prop_value("context") {
+        Some(Expression::ObjectExpression(ctx_obj)) => extract_context_schema(ctx_obj)?,
+        Some(_) => {
+            return Err(ParseError::UnsupportedFeature(
+                "'context' must be an object literal".to_string(),
+            ));
+        }
+        None => ContextSchema { fields: vec![] },
+    };
 
     let setup_config = if setup.is_empty() {
         None
@@ -372,6 +393,7 @@ fn push_machine_lenient(config: &ObjectExpression, setup: &SetupConfig, out: &mu
     };
     infer_state_types(&mut machine.states);
     out.push(machine);
+    Ok(())
 }
 
 /// xstate.js infers a state to be compound when it declares `initial` or
@@ -542,30 +564,33 @@ fn extract_machine_from_config(
     obj: &ObjectExpression,
     setup: &SetupConfig,
 ) -> Result<Machine, ParseError> {
-    let id = extract_string_prop(obj, "id")
+    let id = require_string_prop(obj, "id", "machine 'id'")?
         .ok_or_else(|| ParseError::InvalidMachine("Machine missing 'id'".into()))?;
 
-    let initial = extract_string_prop(obj, "initial")
+    let initial = require_string_prop(obj, "initial", "machine 'initial'")?
         .ok_or_else(|| ParseError::InvalidMachine("Machine missing 'initial'".into()))?;
 
-    let context = obj
-        .get_object_prop_value("context")
-        .and_then(|expr| match expr {
-            Expression::ObjectExpression(ctx_obj) => Some(extract_context_schema(ctx_obj)),
-            _ => None,
-        })
-        .unwrap_or_else(|| ContextSchema { fields: vec![] });
+    let context = match obj.get_object_prop_value("context") {
+        Some(Expression::ObjectExpression(ctx_obj)) => extract_context_schema(ctx_obj)?,
+        Some(_) => {
+            return Err(ParseError::UnsupportedFeature(
+                "'context' must be an object literal".to_string(),
+            ));
+        }
+        None => ContextSchema { fields: vec![] },
+    };
 
-    let states = obj
-        .get_object_prop_value("states")
-        .and_then(|expr| match expr {
-            Expression::ObjectExpression(states_obj) => {
-                Some(extract_states_object(states_obj, &setup.delays))
-            }
-            _ => None,
-        })
-        .transpose()?
-        .unwrap_or_default();
+    let states = match obj.get_object_prop_value("states") {
+        Some(Expression::ObjectExpression(states_obj)) => {
+            extract_states_object(states_obj, &setup.delays)?
+        }
+        Some(_) => {
+            return Err(ParseError::InvalidMachine(
+                "'states' must be an object mapping state names to state nodes".to_string(),
+            ));
+        }
+        None => Vec::new(),
+    };
 
     let setup_config = if setup.is_empty() {
         None
@@ -761,6 +786,137 @@ fn extract_string_prop(obj: &ObjectExpression, key: &str) -> Option<String> {
     extract_string(expr)
 }
 
+/// Fail-closed string-prop extraction: a prop that is *present* must resolve
+/// to a plain string literal (or a non-interpolated template literal), or the
+/// construct is rejected with a typed error. Absent props return `None`.
+///
+/// This is the distinction behind issue #46: falling back for a present-but-
+/// unresolvable value silently produces a different machine, while an absent
+/// prop may legitimately have a default (e.g. the synthetic `machine-N` id).
+fn require_string_prop(
+    obj: &ObjectExpression,
+    key: &str,
+    what: &str,
+) -> Result<Option<String>, ParseError> {
+    match obj.get_object_prop_value(key) {
+        None => Ok(None),
+        Some(expr) => match extract_string(expr) {
+            Some(s) => Ok(Some(s)),
+            None => Err(ParseError::UnsupportedFeature(format!(
+                "{what} is present but not a plain string literal — use a literal value; \
+                 silently substituting a default would produce a different machine"
+            ))),
+        },
+    }
+}
+
+/// Convert a plain JSON-literal expression into a `serde_json::Value`,
+/// rejecting anything that is not representable as serializable data.
+/// Guards params, action args, and context defaults are data: a function
+/// body or identifier reference cannot be carried into the IR, so it must
+/// be rejected rather than silently nulled.
+fn extract_literal_json(expr: &Expression, what: &str) -> Result<serde_json::Value, ParseError> {
+    match expr {
+        Expression::StringLiteral(s) => Ok(serde_json::Value::String(s.value.to_string())),
+        Expression::NumericLiteral(n) => {
+            // Keep the existing integral-vs-float serialization semantics.
+            let val = n.value;
+            if val.fract() == 0.0 && val >= i64::MIN as f64 && val <= i64::MAX as f64 {
+                Ok(serde_json::json!(val as i64))
+            } else {
+                Ok(serde_json::json!(val))
+            }
+        }
+        Expression::BooleanLiteral(b) => Ok(serde_json::Value::Bool(b.value)),
+        Expression::NullLiteral(_) => Ok(serde_json::Value::Null),
+        Expression::TemplateLiteral(t) if t.expressions.is_empty() && t.quasis.len() == 1 => {
+            Ok(serde_json::Value::String(t.quasis[0].value.raw.to_string()))
+        }
+        Expression::ObjectExpression(obj) => {
+            let mut map = serde_json::Map::new();
+            for prop in obj.properties.iter() {
+                let ObjectPropertyKind::ObjectProperty(op) = prop else {
+                    return Err(ParseError::UnsupportedFeature(format!(
+                        "{what} cannot contain spread properties"
+                    )));
+                };
+                let Some(key) = property_key_name(&op.key) else {
+                    return Err(ParseError::UnsupportedFeature(format!(
+                        "{what} keys must be plain identifiers or string literals"
+                    )));
+                };
+                map.insert(key.to_string(), extract_literal_json(&op.value, what)?);
+            }
+            Ok(serde_json::Value::Object(map))
+        }
+        Expression::ArrayExpression(arr) => {
+            let mut items = Vec::new();
+            for elem in arr.elements.iter() {
+                match elem.as_expression() {
+                    Some(e) => items.push(extract_literal_json(e, what)?),
+                    None => {
+                        return Err(ParseError::UnsupportedFeature(format!(
+                            "{what} arrays cannot contain empty slots"
+                        )));
+                    }
+                }
+            }
+            Ok(serde_json::Value::Array(items))
+        }
+        _ => Err(ParseError::UnsupportedFeature(format!(
+            "{what} must be plain JSON literals (strings, numbers, booleans, null, arrays, objects); \
+             functions and identifier references are not serializable data"
+        ))),
+    }
+}
+
+/// Derive the IR `type_name` label from a literal JSON value, matching the
+/// labels the extractor has always produced.
+fn json_type_name(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(_) => "string".into(),
+        serde_json::Value::Number(_) => "number".into(),
+        serde_json::Value::Bool(_) => "boolean".into(),
+        serde_json::Value::Null => "null".into(),
+        serde_json::Value::Array(_) => "array".into(),
+        serde_json::Value::Object(_) => "object".into(),
+    }
+}
+
+/// Build the typed rejection for a behavior-bearing expression that cannot be
+/// represented in the IR (issue #46): inline functions, identifier references
+/// to functions, and calls other than `assign(...)`.
+fn unsupported_behavior(kind: &str, expr: &Expression) -> ParseError {
+    let detail = match expr {
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
+            "inline function expressions cannot be represented in IR".to_string()
+        }
+        Expression::Identifier(id) => {
+            format!(
+                "identifier reference '{id}' cannot be resolved at extraction time — \
+                 use the action/guard name string instead"
+            )
+        }
+        Expression::CallExpression(call) => {
+            let name = extract_callee_name(call).unwrap_or_else(|| "<unknown>".to_string());
+            if matches!(name.as_str(), "and" | "or" | "not") {
+                format!(
+                    "higher-order guard '{name}(...)' is not representable in IR — \
+                     declare a named composed guard instead (the GuardRegistry provides \
+                     and()/or()/not() combinators)"
+                )
+            } else {
+                format!(
+                    "call to '{name}(...)' is not supported here — \
+                     only assign(...) calls are accepted as inline actions"
+                )
+            }
+        }
+        _ => "expression cannot be represented in IR".to_string(),
+    };
+    ParseError::UnsupportedFeature(format!("{kind}: {detail}"))
+}
+
 #[allow(dead_code)]
 fn extract_string_array(arr: &ArrayExpression) -> Vec<String> {
     arr.elements
@@ -775,6 +931,32 @@ fn extract_string_array(arr: &ArrayExpression) -> Vec<String> {
             }
         })
         .collect()
+}
+
+/// Fail-closed extraction for `entry`/`exit` action lists (issue #46): only
+/// string names and the existing `assign(...)` subset are representable —
+/// inline functions and identifier references are typed errors, never
+/// silently dropped. (`tags` stays lenient: it is metadata, not behavior.)
+fn extract_string_action_list(
+    arr: &ArrayExpression,
+    what: &str,
+) -> Result<Vec<String>, ParseError> {
+    let mut out = Vec::new();
+    for elem in arr.elements.iter() {
+        let Some(expr) = elem.as_expression() else {
+            return Err(ParseError::UnsupportedFeature(format!(
+                "{what} arrays cannot contain empty slots"
+            )));
+        };
+        match expr {
+            Expression::StringLiteral(s) => out.push(s.value.to_string()),
+            Expression::CallExpression(call) if is_assign_call(call) => {
+                out.push("assign".to_string())
+            }
+            _ => return Err(unsupported_behavior(what, expr)),
+        }
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -819,27 +1001,38 @@ impl<'a> ObjectExpressionExt for ObjectExpression<'a> {
 // Context schema
 // ---------------------------------------------------------------------------
 
-fn extract_context_schema(obj: &ObjectExpression) -> ContextSchema {
+fn extract_context_schema(obj: &ObjectExpression) -> Result<ContextSchema, ParseError> {
     let mut fields = Vec::new();
 
     for prop in obj.properties.iter() {
-        if let ObjectPropertyKind::ObjectProperty(p) = prop {
-            let name = match property_key_name(&p.key) {
-                Some(n) => n.to_string(),
-                None => continue,
-            };
+        let ObjectPropertyKind::ObjectProperty(p) = prop else {
+            return Err(ParseError::UnsupportedFeature(
+                "context cannot contain spread properties".to_string(),
+            ));
+        };
+        let name = match property_key_name(&p.key) {
+            Some(n) => n.to_string(),
+            None => {
+                return Err(ParseError::UnsupportedFeature(
+                    "context field keys must be plain identifiers or string literals".to_string(),
+                ));
+            }
+        };
 
-            let (type_name, default_value) = expr_to_type_and_value(&p.value);
+        // Context defaults are carried as serializable data; a function or
+        // identifier default cannot be represented and must not silently
+        // degrade to null (issue #46).
+        let default_value = extract_literal_json(&p.value, &format!("context field '{name}'"))?;
+        let type_name = json_type_name(&default_value);
 
-            fields.push(ContextField {
-                name,
-                type_name,
-                default_value,
-            });
-        }
+        fields.push(ContextField {
+            name,
+            type_name,
+            default_value,
+        });
     }
 
-    ContextSchema { fields }
+    Ok(ContextSchema { fields })
 }
 
 pub(crate) fn expr_to_type_and_value(expr: &Expression) -> (String, serde_json::Value) {
@@ -898,17 +1091,28 @@ fn extract_states_object(
     let mut states = Vec::new();
 
     for prop in obj.properties.iter() {
-        if let ObjectPropertyKind::ObjectProperty(p) = prop {
-            let name = match property_key_name(&p.key) {
-                Some(n) => n.to_string(),
-                None => continue,
-            };
-
-            if let Expression::ObjectExpression(state_obj) = &p.value {
-                let state = extract_state_node(&name, state_obj, delays)?;
-                states.push(state);
+        let ObjectPropertyKind::ObjectProperty(p) = prop else {
+            return Err(ParseError::UnsupportedFeature(
+                "'states' cannot contain spread properties".to_string(),
+            ));
+        };
+        let name = match property_key_name(&p.key) {
+            Some(n) => n.to_string(),
+            None => {
+                return Err(ParseError::UnsupportedFeature(
+                    "state keys must be plain identifiers or string literals".to_string(),
+                ));
             }
-        }
+        };
+
+        let Expression::ObjectExpression(state_obj) = &p.value else {
+            return Err(ParseError::UnsupportedFeature(format!(
+                "state '{name}' must be an object literal — silently skipping it would \
+                 leave dangling transitions and produce a different machine"
+            )));
+        };
+        let state = extract_state_node(&name, state_obj, delays)?;
+        states.push(state);
     }
 
     Ok(states)
@@ -921,58 +1125,73 @@ fn extract_state_node(
 ) -> Result<StateNode, ParseError> {
     let description = extract_string_prop(obj, "description");
 
-    let node_type = extract_string_prop(obj, "type")
-        .map(|s| parse_state_type(&s))
-        .unwrap_or_default();
+    let node_type = match obj.get_object_prop_value("type") {
+        Some(expr) => {
+            let s = extract_string(expr).ok_or_else(|| {
+                ParseError::UnsupportedFeature(
+                    "state 'type' is present but not a plain string literal".to_string(),
+                )
+            })?;
+            parse_state_type(&s)?
+        }
+        None => StateType::default(),
+    };
 
-    let initial = extract_string_prop(obj, "initial");
+    let initial = require_string_prop(obj, "initial", "state 'initial'")?;
 
-    let entry = obj
-        .get_object_prop_value("entry")
-        .and_then(|expr| match expr {
-            Expression::ArrayExpression(arr) => Some(extract_string_array(arr)),
-            _ => None,
-        })
-        .unwrap_or_default();
+    let entry = match obj.get_object_prop_value("entry") {
+        Some(Expression::ArrayExpression(arr)) => extract_string_action_list(arr, "entry")?,
+        Some(_) => {
+            return Err(ParseError::UnsupportedFeature(
+                "entry must be an array of action names".to_string(),
+            ));
+        }
+        None => Vec::new(),
+    };
 
-    let exit = obj
-        .get_object_prop_value("exit")
-        .and_then(|expr| match expr {
-            Expression::ArrayExpression(arr) => Some(extract_string_array(arr)),
-            _ => None,
-        })
-        .unwrap_or_default();
+    let exit = match obj.get_object_prop_value("exit") {
+        Some(Expression::ArrayExpression(arr)) => extract_string_action_list(arr, "exit")?,
+        Some(_) => {
+            return Err(ParseError::UnsupportedFeature(
+                "exit must be an array of action names".to_string(),
+            ));
+        }
+        None => Vec::new(),
+    };
 
-    let transitions = obj
-        .get_object_prop_value("on")
-        .and_then(|expr| match expr {
-            Expression::ObjectExpression(on_obj) => Some(extract_transitions(on_obj)),
-            _ => None,
-        })
-        .transpose()?
-        .unwrap_or_default();
+    let transitions = match obj.get_object_prop_value("on") {
+        Some(Expression::ObjectExpression(on_obj)) => extract_transitions(on_obj)?,
+        Some(_) => {
+            return Err(ParseError::UnsupportedFeature(
+                "'on' must be an object mapping event names to transitions".to_string(),
+            ));
+        }
+        None => Vec::new(),
+    };
 
     // always transitions (eventless) — extract from array
-    let always_transitions: Vec<Transition> = obj
-        .get_object_prop_value("always")
-        .and_then(|expr| match expr {
-            Expression::ArrayExpression(arr) => Some(extract_always_transitions(arr)),
-            _ => None,
-        })
-        .transpose()?
-        .unwrap_or_default();
+    let always_transitions: Vec<Transition> = match obj.get_object_prop_value("always") {
+        Some(Expression::ArrayExpression(arr)) => extract_always_transitions(arr)?,
+        Some(_) => {
+            return Err(ParseError::UnsupportedFeature(
+                "'always' must be an array of transitions".to_string(),
+            ));
+        }
+        None => Vec::new(),
+    };
 
     // after (delayed) transitions
-    let after_transitions: Vec<Transition> = obj
-        .get_object_prop_value("after")
-        .and_then(|expr| match expr {
-            Expression::ObjectExpression(after_obj) => {
-                Some(extract_after_transitions(after_obj, delays))
-            }
-            _ => None,
-        })
-        .transpose()?
-        .unwrap_or_default();
+    let after_transitions: Vec<Transition> = match obj.get_object_prop_value("after") {
+        Some(Expression::ObjectExpression(after_obj)) => {
+            extract_after_transitions(after_obj, delays)?
+        }
+        Some(_) => {
+            return Err(ParseError::UnsupportedFeature(
+                "'after' must be an object mapping delays to transitions".to_string(),
+            ));
+        }
+        None => Vec::new(),
+    };
 
     let on_done: Vec<Transition> = obj
         .get_object_prop_value("onDone")
@@ -1021,16 +1240,17 @@ fn extract_state_node(
         .transpose()?
         .unwrap_or_default();
 
-    let children = obj
-        .get_object_prop_value("states")
-        .and_then(|expr| match expr {
-            Expression::ObjectExpression(children_obj) => {
-                Some(extract_states_object(children_obj, delays))
-            }
-            _ => None,
-        })
-        .transpose()?
-        .unwrap_or_default();
+    let children = match obj.get_object_prop_value("states") {
+        Some(Expression::ObjectExpression(children_obj)) => {
+            extract_states_object(children_obj, delays)?
+        }
+        Some(_) => {
+            return Err(ParseError::UnsupportedFeature(
+                "nested 'states' must be an object mapping state names to state nodes".to_string(),
+            ));
+        }
+        None => Vec::new(),
+    };
 
     let invoke = obj
         .get_object_prop_value("invoke")
@@ -1100,15 +1320,19 @@ fn extract_state_node(
     })
 }
 
-fn parse_state_type(s: &str) -> StateType {
+fn parse_state_type(s: &str) -> Result<StateType, ParseError> {
     match s {
-        "atomic" => StateType::Atomic,
-        "compound" => StateType::Compound,
-        "parallel" => StateType::Parallel,
-        "final" => StateType::Final,
-        "history" => StateType::History,
-        "deepHistory" | "deephistory" => StateType::DeepHistory,
-        _ => StateType::Atomic,
+        "atomic" => Ok(StateType::Atomic),
+        "compound" => Ok(StateType::Compound),
+        "parallel" => Ok(StateType::Parallel),
+        "final" => Ok(StateType::Final),
+        "history" => Ok(StateType::History),
+        "deepHistory" | "deephistory" => Ok(StateType::DeepHistory),
+        other => Err(ParseError::UnsupportedFeature(format!(
+            "unknown state type '{other}' — expected one of atomic, compound, parallel, \
+             final, history, deepHistory; silently coercing it to atomic would produce \
+             a different machine"
+        ))),
     }
 }
 
@@ -1120,15 +1344,22 @@ fn extract_transitions(on_obj: &ObjectExpression) -> Result<Vec<Transition>, Par
     let mut transitions = Vec::new();
 
     for prop in on_obj.properties.iter() {
-        if let ObjectPropertyKind::ObjectProperty(p) = prop {
-            let event = match property_key_name(&p.key) {
-                Some(n) => n.to_string(),
-                None => continue,
-            };
+        let ObjectPropertyKind::ObjectProperty(p) = prop else {
+            return Err(ParseError::UnsupportedFeature(
+                "'on' cannot contain spread properties".to_string(),
+            ));
+        };
+        let event = match property_key_name(&p.key) {
+            Some(n) => n.to_string(),
+            None => {
+                return Err(ParseError::UnsupportedFeature(
+                    "event keys in 'on' must be plain identifiers or string literals".to_string(),
+                ));
+            }
+        };
 
-            let mut event_transitions = extract_transition_value(&event, &p.value)?;
-            transitions.append(&mut event_transitions);
-        }
+        let mut event_transitions = extract_transition_value(&event, &p.value)?;
+        transitions.append(&mut event_transitions);
     }
 
     Ok(transitions)
@@ -1140,9 +1371,9 @@ fn extract_transition_value(
 ) -> Result<Vec<Transition>, ParseError> {
     match value {
         // Simple string target: `on: { TOGGLE: 'active' }`
-        Expression::StringLiteral(s) => Ok(vec![Transition {
+        _ if extract_string(value).is_some() => Ok(vec![Transition {
             event: event.to_string(),
-            target: Some(s.value.to_string()),
+            target: extract_string(value),
             guard: None,
             delay_ms: None,
             targets: vec![],
@@ -1156,22 +1387,29 @@ fn extract_transition_value(
                 if let Some(elem_expr) = elem.as_expression() {
                     let t = extract_single_transition(event, elem_expr)?;
                     transitions.push(t);
+                } else {
+                    return Err(ParseError::UnsupportedFeature(format!(
+                        "event '{event}': transition arrays cannot contain empty slots"
+                    )));
                 }
             }
             Ok(transitions)
         }
         // Object: `on: { SUBMIT: { target: 'processing', actions: ['log'] } }`
         Expression::ObjectExpression(obj) => Ok(vec![extract_transition_from_obj(event, obj)?]),
-        _ => Ok(vec![]),
+        _ => Err(unsupported_behavior(
+            &format!("transition for event '{event}'"),
+            value,
+        )),
     }
 }
 
 fn extract_single_transition(event: &str, expr: &Expression) -> Result<Transition, ParseError> {
     match expr {
         // String inside array: `[{ target: 'a' }, 'b']` -> simple target
-        Expression::StringLiteral(s) => Ok(Transition {
+        _ if extract_string(expr).is_some() => Ok(Transition {
             event: event.to_string(),
-            target: Some(s.value.to_string()),
+            target: extract_string(expr),
             guard: None,
             delay_ms: None,
             targets: vec![],
@@ -1179,15 +1417,10 @@ fn extract_single_transition(event: &str, expr: &Expression) -> Result<Transitio
             description: None,
         }),
         Expression::ObjectExpression(obj) => extract_transition_from_obj(event, obj),
-        _ => Ok(Transition {
-            event: event.to_string(),
-            target: None,
-            guard: None,
-            delay_ms: None,
-            targets: vec![],
-            actions: vec![],
-            description: None,
-        }),
+        _ => Err(unsupported_behavior(
+            &format!("transition for event '{event}'"),
+            expr,
+        )),
     }
 }
 
@@ -1195,11 +1428,12 @@ fn extract_transition_from_obj(
     event: &str,
     obj: &ObjectExpression,
 ) -> Result<Transition, ParseError> {
-    let target = extract_string_prop(obj, "target");
+    let target = require_string_prop(obj, "target", "transition 'target'")?;
 
-    let guard = obj
-        .get_object_prop_value("guard")
-        .and_then(extract_guard_expr);
+    let guard = match obj.get_object_prop_value("guard") {
+        Some(g) => extract_guard_expr(g)?,
+        None => None,
+    };
 
     let actions = obj
         .get_object_prop_value("actions")
@@ -1241,8 +1475,14 @@ fn extract_always_transitions(arr: &ArrayExpression) -> Result<Vec<Transition>, 
                         description: None,
                     });
                 }
-                _ => {}
+                _ => {
+                    return Err(unsupported_behavior("'always' transition", elem_expr));
+                }
             }
+        } else {
+            return Err(ParseError::UnsupportedFeature(
+                "'always' arrays cannot contain empty slots".to_string(),
+            ));
         }
     }
 
@@ -1257,10 +1497,19 @@ fn extract_after_transitions(
 
     for prop in after_obj.properties.iter() {
         let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
-            continue;
+            return Err(ParseError::UnsupportedFeature(
+                "'after' cannot contain spread properties".to_string(),
+            ));
         };
 
         let key_name = property_key_name(&obj_prop.key);
+        if key_name.is_none() {
+            return Err(ParseError::UnsupportedFeature(
+                "'after' keys must be plain identifiers, string literals, or numeric delay \
+                 values"
+                    .to_string(),
+            ));
+        }
 
         let delay_ms = if let Some(name) = key_name {
             if let Ok(ms) = name.parse::<u64>() {
@@ -1287,10 +1536,10 @@ fn extract_after_transitions(
 // ---------------------------------------------------------------------------
 
 fn extract_invoke_config(invoke_obj: &ObjectExpression) -> Result<InvokeConfig, ParseError> {
-    let src = extract_string_prop(invoke_obj, "src")
+    let src = require_string_prop(invoke_obj, "src", "invoke 'src'")?
         .ok_or_else(|| ParseError::InvalidMachine("invoke missing 'src'".into()))?;
 
-    let id = extract_string_prop(invoke_obj, "id");
+    let id = require_string_prop(invoke_obj, "id", "invoke 'id'")?;
 
     let on_done = invoke_obj
         .get_object_prop_value("onDone")
@@ -1356,23 +1605,39 @@ fn extract_invoke_config(invoke_obj: &ObjectExpression) -> Result<InvokeConfig, 
 // Guards
 // ---------------------------------------------------------------------------
 
-fn extract_guard_expr(expr: &Expression) -> Option<Guard> {
+fn extract_guard_expr(expr: &Expression) -> Result<Option<Guard>, ParseError> {
     // Simple string guard: `guard: 'isValid'`
     if let Some(s) = extract_string(expr) {
-        return Some(Guard { name: s });
+        return Ok(Some(Guard {
+            name: s,
+            params: None,
+        }));
     }
 
-    // Object guard: `guard: { type: 'isValid' }`
-    if let Expression::ObjectExpression(obj) = expr {
-        if let Some(name) = extract_string_prop(obj, "type") {
-            return Some(Guard { name });
+    match expr {
+        // Object guard: `guard: { type: 'isValid', params: {...} }`
+        // `params` are serializable data and are carried into the IR — the
+        // docs-recommended form must not lose its payload (issue #46).
+        Expression::ObjectExpression(obj) => {
+            let name = extract_string_prop(obj, "type")
+                .or_else(|| extract_string_prop(obj, "name"))
+                .ok_or_else(|| {
+                    ParseError::UnsupportedFeature(
+                        "guard object must declare a string 'type' or 'name'".to_string(),
+                    )
+                })?;
+            let params = match obj.get_object_prop_value("params") {
+                Some(p) => Some(extract_literal_json(p, "guard params")?),
+                None => None,
+            };
+            Ok(Some(Guard { name, params }))
         }
-        if let Some(name) = extract_string_prop(obj, "name") {
-            return Some(Guard { name });
-        }
+        // Arrow functions, identifier references, and calls such as
+        // and()/or()/not() cannot be represented in the IR — reject instead
+        // of silently dropping the guard (which would allow the transition
+        // the author intended to block).
+        _ => Err(unsupported_behavior("guard", expr)),
     }
-
-    None
 }
 
 // ---------------------------------------------------------------------------
@@ -1388,59 +1653,75 @@ fn extract_actions_expr(expr: &Expression) -> Result<Vec<Action>, ParseError> {
         Expression::ArrayExpression(arr) => {
             let mut actions = Vec::new();
             for elem in arr.elements.iter() {
-                if let Some(action) = extract_action_from_element(elem)? {
-                    actions.push(action);
-                }
+                actions.push(extract_action_from_element(elem)?);
             }
             Ok(actions)
         }
         Expression::CallExpression(call) => {
             if is_assign_call(call) {
-                Ok(extract_assign_action(call)?.into_iter().collect())
+                Ok(vec![require_assign_action(call)?])
             } else {
-                Ok(vec![])
+                Err(unsupported_behavior("action", expr))
             }
         }
-        _ => Ok(vec![]),
+        _ => Err(unsupported_behavior("action", expr)),
     }
 }
 
-fn extract_action_from_element(
-    elem: &ArrayExpressionElement,
-) -> Result<Option<Action>, ParseError> {
+fn extract_action_from_element(elem: &ArrayExpressionElement) -> Result<Action, ParseError> {
     let Some(expr) = elem.as_expression() else {
-        return Ok(None);
+        return Err(ParseError::UnsupportedFeature(
+            "action arrays cannot contain empty slots".to_string(),
+        ));
     };
     match expr {
-        Expression::StringLiteral(s) => Ok(Some(Action {
+        Expression::StringLiteral(s) => Ok(Action {
             name: s.value.to_string(),
             args: vec![],
-        })),
+        }),
         Expression::ObjectExpression(obj) => {
             let Some(name) = extract_string_prop(obj, "type") else {
-                return Ok(None);
+                return Err(ParseError::UnsupportedFeature(
+                    "action object must declare a string 'type'".to_string(),
+                ));
             };
-            let args: Vec<serde_json::Value> = obj
-                .properties
-                .iter()
-                .filter_map(|p| {
-                    if let ObjectPropertyKind::ObjectProperty(op) = p {
-                        let key = property_key_name(&op.key)?;
-                        if key == "type" || key == "name" {
-                            return None;
-                        }
-                        let (_, val) = expr_to_type_and_value(&op.value);
-                        Some(val)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            Ok(Some(Action { name, args }))
+            // Remaining props are carried as serializable args.
+            let mut args: Vec<serde_json::Value> = Vec::new();
+            for p in obj.properties.iter() {
+                let ObjectPropertyKind::ObjectProperty(op) = p else {
+                    return Err(ParseError::UnsupportedFeature(
+                        "action objects cannot contain spread properties".to_string(),
+                    ));
+                };
+                let Some(key) = property_key_name(&op.key) else {
+                    return Err(ParseError::UnsupportedFeature(
+                        "action object keys must be plain identifiers or string literals"
+                            .to_string(),
+                    ));
+                };
+                if key == "type" || key == "name" {
+                    continue;
+                }
+                args.push(extract_literal_json(
+                    &op.value,
+                    &format!("action '{name}' argument '{key}'"),
+                )?);
+            }
+            Ok(Action { name, args })
         }
-        Expression::CallExpression(call) if is_assign_call(call) => extract_assign_action(call),
-        _ => Ok(None),
+        Expression::CallExpression(call) if is_assign_call(call) => require_assign_action(call),
+        _ => Err(unsupported_behavior("action", expr)),
     }
+}
+
+/// `assign(...)` is the only accepted inline call. A present call whose
+/// argument is not an object literal is a typed error, not a silent no-op.
+fn require_assign_action(call: &CallExpression) -> Result<Action, ParseError> {
+    extract_assign_action(call)?.ok_or_else(|| {
+        ParseError::UnsupportedFeature(
+            "assign(...) must be called with a single object literal argument".to_string(),
+        )
+    })
 }
 
 fn is_assign_call(call: &CallExpression) -> bool {

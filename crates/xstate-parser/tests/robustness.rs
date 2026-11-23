@@ -66,13 +66,16 @@ fn non_object_config_returns_err() {
 }
 
 #[test]
-fn states_with_non_object_values_is_lenient_not_panic() {
+fn states_with_non_object_values_are_rejected_not_skipped() {
+    // Issue #46: a present state whose value is not an object literal would
+    // previously be silently skipped, leaving dangling transitions. It must
+    // now be a typed error.
     let src = "const m = createMachine({ id: 'm', initial: 'a', states: { a: 'notanobject' } });";
-    let machine = parse(src).expect("lenient parse should succeed without panicking");
+    let err = parse(src).expect_err("non-object state values must be rejected, not skipped");
+    let msg = err.to_string();
     assert!(
-        machine.states.is_empty(),
-        "non-object state values are skipped, got {:?}",
-        machine.states
+        msg.contains("Unsupported"),
+        "typed rejection expected: {msg}"
     );
 }
 
@@ -137,8 +140,10 @@ fn truncated_assign_updater_returns_err() {
 
 #[test]
 fn parse_all_is_lenient_but_never_panics() {
-    // Documented gap: parse_all is per-machine lenient — Ok or Err are both
-    // acceptable as long as nothing panics or aborts (issue #29).
+    // parse_all synthesizes defaults only for *missing* properties; present
+    // but unrepresentable constructs are typed errors (issue #46). Either
+    // Ok or Err is acceptable here as long as nothing panics or aborts
+    // (issue #29).
     let _ = parse_all("const m = createMachine({ id: 'm', initial: 'a', states: { a: {");
     let _ = parse_all("createMachine(); createMachine('x'); const y = createMachine(1);");
     let _ =

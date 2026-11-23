@@ -1974,6 +1974,7 @@ mod tests {
                         target: Some("processing".into()),
                         guard: Some(Guard {
                             name: "isAmountValid".into(),
+                            params: None,
                         }),
                         actions: vec![Action {
                             name: "startPayment".into(),
@@ -2951,6 +2952,7 @@ mod tests {
                         target: Some("done".into()),
                         guard: Some(Guard {
                             name: "ready".into(),
+                            params: None,
                         }),
                         actions: vec![],
                         description: None,

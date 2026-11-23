@@ -47,6 +47,7 @@ mod tests {
                         target: Some("processing".into()),
                         guard: Some(Guard {
                             name: "isAmountValid".into(),
+                            params: None,
                         }),
                         actions: vec![
                             Action {

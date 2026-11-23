@@ -1177,6 +1177,7 @@ mod tests {
                         target: Some("on".into()),
                         guard: Some(xstate_ir::Guard {
                             name: "canToggle".into(),
+                            params: None,
                         }),
                         actions: vec![],
                         description: None,
