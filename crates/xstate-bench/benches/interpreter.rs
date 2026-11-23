@@ -248,6 +248,7 @@ fn guarded_machine() -> Machine {
                     target: Some("active".into()),
                     guard: Some(Guard {
                         name: "isValid".into(),
+                        params: None,
                     }),
                     actions: vec![],
                     description: None,

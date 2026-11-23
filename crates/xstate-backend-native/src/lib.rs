@@ -922,6 +922,7 @@ mod invoke_tests {
                     let mut t = trans("TOGGLE", "on");
                     t.guard = Some(xstate_ir::Guard {
                         name: "canToggle".into(),
+                        params: None,
                     });
                     atomic("off", vec![t])
                 },
@@ -1217,6 +1218,7 @@ mod tests {
                         target: Some("on".into()),
                         guard: Some(xstate_core::xstate_ir::Guard {
                             name: "canToggle".into(),
+                            params: None,
                         }),
                         actions: vec![],
                         description: None,

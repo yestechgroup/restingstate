@@ -662,7 +662,10 @@ mod tests {
         xstate_ir::Transition {
             event: event.into(),
             target: target.map(Into::into),
-            guard: guard.map(|g| xstate_ir::Guard { name: g.into() }),
+            guard: guard.map(|g| xstate_ir::Guard {
+                name: g.into(),
+                params: None,
+            }),
             actions,
             description: None,
             delay_ms: None,

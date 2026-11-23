@@ -107,6 +107,17 @@ semantics and plugin work; codegen / `xstate!` targets simple flat FSMs only —
 
 ### Supported XState Constructs
 
+The parser is **fail-closed** (#46): machine-config constructs it cannot represent
+in the IR are typed `ParseError::UnsupportedFeature` rejections — inline functions
+in `guard`/`actions`/`entry`/`exit`, identifier references, calls other than
+`assign(...)` (including `and(...)`/`or(...)`/`not(...)`/`stateIn(...)` — declare a
+named composed guard instead; the host-side `GuardRegistry` has the combinators),
+guard-object params with non-literal values, and scalar props (`id`, `initial`,
+`target`, `type`) that are present but not plain literals. Guard-object `params`
+are serializable data and are carried into `Guard.params`. See
+`crates/xstate-parser/tests/fail_open_constructs.rs` for the exact contract.
+
+
 - `createMachine({...})` top-level call
 - `id`, `initial`, `context`, `states`
 - `on: { EVENT: ... }` with string target, transition object, or array
@@ -375,7 +386,7 @@ Test vectors live in `tests/compatibility/machines/` organized by category (25 h
 - `invoke/` — invoked actors
 - `payload/` — event payload support
 
-Additional extracted test vectors (31 vectors; the extractor emits only faithfulness-guarded vectors — config/IR transition surface and declared-initial are verified against real xstate.js, artifact vectors are skipped) are generated from the xstate.js
+Additional extracted test vectors (23 vectors; the extractor emits only faithfulness-guarded vectors — config/IR transition surface and declared-initial are verified against real xstate.js, artifact vectors are skipped, and sources whose machines the parser rejects as unrepresentable (#46 fail-closed) are skipped too) are generated from the xstate.js
 test suite and stored in `tests/compatibility/vectors/extracted/`. Use the
 extraction tool to regenerate them:
 
@@ -515,7 +526,7 @@ machine.send({ type: 'TOGGLE' });    // Returns new snapshot or null
 
 ## Project Status
 
-All planned phases complete. 350+ tests pass. 25 hand-crafted compatibility vectors + 31 faithfulness-guarded extracted vectors. Actor system with dual backends (Tokio + WASM). WASM browser support with full JS API.
+All planned phases complete. 350+ tests pass. 25 hand-crafted compatibility vectors + 23 faithfulness-guarded extracted vectors (sources with inline guards/actions are rejected fail-closed per #46, not extracted with dropped behavior). Actor system with dual backends (Tokio + WASM). WASM browser support with full JS API.
 
 ---
 

@@ -308,6 +308,7 @@ fn golden_with_guards() {
                     target: Some("submitted".into()),
                     guard: Some(Guard {
                         name: "isValid".into(),
+                        params: None,
                     }),
                     actions: vec![],
                     description: None,
@@ -535,6 +536,7 @@ fn golden_machine_with_setup_guards_and_actions() {
                     target: Some("submitted".into()),
                     guard: Some(Guard {
                         name: "isValid".into(),
+                        params: None,
                     }),
                     actions: vec![],
                     description: None,
@@ -749,6 +751,7 @@ fn golden_machine_with_full_setup() {
                     target: Some("running".into()),
                     guard: Some(Guard {
                         name: "canStart".into(),
+                        params: None,
                     }),
                     actions: vec![],
                     description: None,
@@ -878,6 +881,7 @@ fn compile_test_actor_aware_machine() {
                     target: Some("active".into()),
                     guard: Some(Guard {
                         name: "isValid".into(),
+                        params: None,
                     }),
                     actions: vec![],
                     description: None,
